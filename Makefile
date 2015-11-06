@@ -1,24 +1,37 @@
-OBJECTS := main.o 
-TARGET  := gpudirect
-NVCC    := nvcc
+PINGOBJ := ping.o common.o
+PONGOBJ := pong.o common.o
+NVCC    := /usr/local/cuda/bin/nvcc
 CC      := gcc
-CFLAGS  := -Wall -Wextra
-IPATH	:= /opt/DIS/include /opt/DIS/include/dis $(CUDA_HOME)/targets/x86_64-linux/include
+CFLAGS  := -Wall -Wextra -g
+IPATH	:= /opt/DIS/include /opt/DIS/include/dis /usr/local/cuda/include
 LPATH   := /opt/DIS/lib64
 
-.PHONY: $(TARGET) all clean
+.PHONY: all clean ping pong
 
-all: $(TARGET)
+all: ping pong
 
-$(TARGET): $(OBJECTS)
+ping: $(PINGOBJ) ping_main.o
+	$(NVCC) -o $@ $^ -lsisci -L$(LPATH) -lcuda
+
+pong: $(PONGOBJ) pong_main.o
 	$(NVCC) -o $@ $^ -lsisci -L$(LPATH) -lcuda
 
 clean:
-	-$(RM) $(OBJECTS) $(TARGET)
+	-$(RM) ping ping_main.o $(PINGOBJ)
+	-$(RM) pong pong_main.o $(PONGOBJ)
 
 %.o: %.cu
 	$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(IPATH)) -o $@ $< -c
 
 %.o: %.cpp
-	$(CC) -x c++ -std=c++11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c
+	$(CC) -x c++ -std=gnu++11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c
 
+%.o: %.c
+	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c
+
+# TODO: Do this more elegantly
+ping_main.o: main.c
+	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c -DPING
+	
+pong_main.o: main.c
+	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c -DPONG
