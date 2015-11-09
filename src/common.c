@@ -170,3 +170,37 @@ uint64_t getRemoteIOAddr(sci_remote_segment_t seg)
 
     return query.data.ioaddr;
 }
+
+void dumpMem(const uint8_t* data, size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (i % 80 == 0)
+        {
+            fprintf(stdout, "\n");
+            if (i / 80 == 10)
+            {
+                fprintf(stdout, "...");
+                break;
+            }
+        }
+        fprintf(stdout, "%02x", data[i]);
+    }
+    fprintf(stdout, "\n");
+}
+
+void fillMem(uint8_t* data, size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        data[i] = i & 255;
+    }
+}
+
+void zeroMem(uint8_t* data, size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        data[i] = 0;
+    }
+}

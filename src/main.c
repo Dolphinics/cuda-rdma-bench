@@ -101,7 +101,7 @@ int main(int argc, char** argv/*, char** envp*/)
             case 's': // set segment size
                 strptr = NULL;
                 segment_size = strtoul(optarg, &strptr, 0);
-                if (strptr != NULL || *strptr != '\0')
+                if (strptr == NULL || *strptr != '\0')
                 {
                     fprintf(stderr, "Option -s requires a valid segment size\n");
                     goto give_usage;
@@ -111,7 +111,7 @@ int main(int argc, char** argv/*, char** envp*/)
             case 'a': // set local adapter number
                 strptr = NULL;
                 local_adapter = strtoul(optarg, &strptr, 0);
-                if (strptr != NULL || *strptr != '\0')
+                if (strptr == NULL || *strptr != '\0')
                 {
                     fprintf(stderr, "Option -a requires a valid adapter number\n");
                     goto give_usage;
@@ -123,10 +123,16 @@ int main(int argc, char** argv/*, char** envp*/)
 #ifndef PING
     if (NO_NODE_ID == remote_node_id)
     {
-        fprintf(stderr, "Remote node ID is required!");
+        fprintf(stderr, "Remote node ID is required!\n");
         goto give_usage;
     }
 #endif
+
+    if (0 == segment_size)
+    {
+        fprintf(stderr, "Segment size is required!\n");
+        goto give_usage;
+    }
 
     sci_error_t err;
 
@@ -202,5 +208,6 @@ give_usage:
 #endif
             "\n",
             argv[0]);
+
     return 1;
 }

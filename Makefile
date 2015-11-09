@@ -1,37 +1,58 @@
-PINGOBJ := ping.o common.o
-PONGOBJ := pong.o common.o
-NVCC    := /usr/local/cuda/bin/nvcc
+PROJECT	:= gd
+
+# Necessary binaries (C/C++ compiler and CUDA compiler)
 CC      := gcc
+ifneq ($(shell which colorgcc),)
+	CC := colorgcc
+endif
 CFLAGS  := -Wall -Wextra -g
-IPATH	:= /opt/DIS/include /opt/DIS/include/dis /usr/local/cuda/include
-LPATH   := /opt/DIS/lib64
+NVCC    := /usr/local/cuda/bin/nvcc
 
-.PHONY: all clean ping pong
+# Include paths for SISCI and CUDA
+INCLUDE	:= /opt/DIS/include /opt/DIS/include/dis /usr/local/cuda/include
 
-all: ping pong
+# Link paths
+LD_PATH := /opt/DIS/lib64
 
-ping: $(PINGOBJ) ping_main.o
-	$(NVCC) -o $@ $^ -lsisci -L$(LPATH) -lcuda
+# Source files
+SOURCES := $(wildcard src/*.c) $(wildcard src/*.cpp) $(wildcard src/*.cu)
+HEADERS	:= $(wildcard src/*.h) $(wildcard src/*.hpp)
 
-pong: $(PONGOBJ) pong_main.o
-	$(NVCC) -o $@ $^ -lsisci -L$(LPATH) -lcuda
+
+# Makefile targets
+.PHONY: all clean $(PROJECT)-bench $(PROJECT)-query
+
+all: $(PROJECT)-query $(PROJECT)-bench
 
 clean:
-	-$(RM) ping ping_main.o $(PINGOBJ)
-	-$(RM) pong pong_main.o $(PONGOBJ)
+	-$(RM) $(QUERY_OBJS)
+	-$(RM) $(BENCH_OBJS)
+	-$(RM) $(PROJECT)-query $(PROJECT)-bench
 
-%.o: %.cu
-	$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(IPATH)) -o $@ $< -c
+# Target template
+define target_template
+obj/$(2).%.cu.o: src/%.cu
+	-@mkdir -p $$(@D)
+	$$(NVCC) -std=c++11 --compiler-options "$$(CFLAGS)" $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
 
-%.o: %.cpp
-	$(CC) -x c++ -std=gnu++11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c
+obj/$(2).%.cpp.o: src/%.cpp
+	-@mkdir -p $$(@D)
+	$$(CC) -x c++ -std=gnu++11 $$(CFLAGS) $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
 
-%.o: %.c
-	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c
+obj/$(2).%.c.o: src/%.c
+	-@mkdir -p $$(@D)
+	$$(CC) -x c -std=gnu11 $$(CFLAGS) $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
 
-# TODO: Do this more elegantly
-ping_main.o: main.c
-	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c -DPING
-	
-pong_main.o: main.c
-	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(IPATH)) -o $@ $< -c -DPONG
+$(1)_OBJS = $$(SOURCES:src/%=obj/$(2).%.o)
+endef
+
+
+$(eval $(call target_template,QUERY,query))
+$(eval $(call target_template,BENCH,bench))
+
+$(PROJECT)-query: $(QUERY_OBJS)
+	$(NVCC) -o $@ $^ -lsisci $(addprefix -L,$(LD_PATH)) -lcuda
+
+$(PROJECT)-bench: $(BENCH_OBJS)
+	$(NVCC) -o $@ $^ -lsisci $(addprefix -L,$(LD_PATH)) -lcuda
+

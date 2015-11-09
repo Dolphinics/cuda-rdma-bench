@@ -12,40 +12,6 @@ extern "C" {
 }
 
 
-__host__ void dumpMemory(const uint8_t* data, size_t size)
-{
-    for (size_t i = 0; i < size; ++i)
-    {
-        if (i % 80 == 0)
-        {
-            fprintf(stdout, "\n");
-            if (i / 80 == 10)
-            {
-                fprintf(stdout, "...");
-                break;
-            }
-        }
-        fprintf(stdout, "%02x", data[i]);
-    }
-    fprintf(stdout, "\n");
-}
-
-__host__ __device__ void fillMemory(uint8_t* data, size_t size)
-{
-    for (size_t i = 0; i < size; ++i)
-    {
-        data[i] = i & 255;
-    }
-}
-
-__host__ __device__ void zeroMemory(uint8_t* data, size_t size)
-{
-    for (size_t i = 0; i < size; ++i)
-    {
-        data[i] = 0;
-    }
-}
-
 /* Get the device pointer allocated by cudaMalloc */
 __host__ void* getDevicePtr(const void* ptr)
 {
@@ -69,21 +35,6 @@ __host__ void* getDevicePtr(const void* ptr)
     }
 
     return attrs.devicePointer;
-}
-
-__host__ void* getHostPtr(const void* ptr)
-{
-    cudaPointerAttributes attrs;
-
-    cudaError_t err = cudaPointerGetAttributes(&attrs, ptr);
-
-    if (cudaSuccess != err)
-    {
-        fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
-        exit(err);
-    }
-
-    return attrs.hostPointer;
 }
 
 __host__ sci_local_segment_t createSegment(uint32_t id, sci_desc_t sd, uint32_t adapter, void* ptr, size_t size)
@@ -165,7 +116,7 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         exit(errno);
     }
 
-    fillMemory(host_mem, seg_size);
+    fillMem(host_mem, seg_size);
 
     // Allocate device memory
     uint8_t* dev_mem;
@@ -176,8 +127,6 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
         exit(err);
     }
-    fprintf(stderr, "Device pointer: %16lx\n", (uint64_t) getDevicePtr(dev_mem));
-    fprintf(stderr, "Host pointer  : %16lx\n", (uint64_t) getHostPtr(dev_mem));
 
     // Copy host memory data to device memory
     err = cudaMemcpy(dev_mem, host_mem, seg_size, cudaMemcpyHostToDevice);
@@ -187,7 +136,7 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         exit(err);
     }
 
-    zeroMemory(host_mem, seg_size);
+    zeroMem(host_mem, seg_size);
 
     // Create local segment mapped to GPU memory
     const uint32_t cuda_id = SEGMENT_ID(local_id, 0, 0);
@@ -210,7 +159,7 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         exit(err);
     }
 
-    dumpMemory((uint8_t*) mapped_mem, seg_size);
+    dumpMem((uint8_t*) mapped_mem, seg_size);
 
     // Zero out GPU memory
     err = cudaMemcpy(dev_mem, host_mem, seg_size, cudaMemcpyHostToDevice);
@@ -228,7 +177,7 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         exit(err);
     }
 
-    dumpMemory(host_mem, seg_size);
+    dumpMem(host_mem, seg_size);
 
     // Copy from GPU to local memory
     err = cudaMemcpy(host_mem, dev_mem, seg_size, cudaMemcpyDeviceToHost);
@@ -238,10 +187,9 @@ void PongNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, uint32_t
         exit(err);
     }
 
-    dumpMemory(host_mem, seg_size);
+    dumpMem(host_mem, seg_size);
 
     fprintf(stderr, "Device pointer: %16lx\n", (uint64_t) getDevicePtr(dev_mem));
-    fprintf(stderr, "Host pointer  : %16lx\n", (uint64_t) getHostPtr(dev_mem));
     fprintf(stderr, "Physical addr : %16lx\n", getPhysAddr(cuda_segment));
     fprintf(stderr, "Local IO addr : %16lx\n", getLocalIOAddr(cuda_segment));
     fprintf(stderr, "Remote IO addr: %16lx\n", getRemoteIOAddr(dma_segment));

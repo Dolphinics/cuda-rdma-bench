@@ -19,4 +19,10 @@ uint64_t getLocalIOAddr(sci_local_segment_t segment);
 
 uint64_t getRemoteIOAddr(sci_remote_segment_t segment);
 
+void dumpMem(const uint8_t* addr, size_t size);
+
+void fillMem(uint8_t* addr, size_t size);
+
+void zeroMem(uint8_t* addr, size_t size);
+
 #endif

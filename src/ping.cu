@@ -42,6 +42,6 @@ void PingNode(sci_desc_t dev_desc, uint32_t adapter, uint32_t local_id, size_t s
     const uint32_t segment_id = SEGMENT_ID(local_id, 0, 0);
     sci_local_segment_t segment = createSegment(segment_id, dev_desc, adapter, seg_size);
 
-    fprintf(stderr, "Created segment with ID = %u, local node ID = %u\n", segment_id, local_id);
+    fprintf(stderr, "Created segment ID = %u and size = %lu, local node ID = %u\n", segment_id, seg_size, local_id);
     while (1);
 }
