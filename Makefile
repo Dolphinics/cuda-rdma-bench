@@ -1,58 +1,68 @@
-PROJECT	:= gd
+# Source code directories
+DIRS 	:= local-memcpy
+
+# Common libraries
+LD_LIBS := rt
+LD_PATH	:=
 
 # Necessary binaries (C/C++ compiler and CUDA compiler)
-CC      := gcc
-ifneq ($(shell which colorgcc),)
-	CC := colorgcc
-endif
-CFLAGS  := -Wall -Wextra -g
-NVCC    := /usr/local/cuda/bin/nvcc
+CC     	:= gcc
+CFLAGS	:= -Wall -Wextra 
+NVCC  	:= /usr/local/cuda/bin/nvcc
+NVFLAGS	:=
 
 # Include paths for SISCI and CUDA
-INCLUDE	:= /opt/DIS/include /opt/DIS/include/dis /usr/local/cuda/include
+INC_DIS	:= /opt/DIS/include /opt/DIS/include/dis 
+INC_NV	:= /usr/local/cuda/include
 
 # Link paths
-LD_PATH := /opt/DIS/lib64
+LD_DIS	:= /opt/DIS/lib64
+LD_NV	:=
 
-# Source files
-SOURCES := $(wildcard src/*.c) $(wildcard src/*.cpp) $(wildcard src/*.cu)
-HEADERS	:= $(wildcard src/*.h) $(wildcard src/*.hpp)
+# Libraries
+LIB_DIS	:= sisci
+LIB_NV	:= cuda
 
 
-# Makefile targets
-.PHONY: all clean $(PROJECT)-bench $(PROJECT)-query
+libs += $(addprefix -L,$(LD_PATH)) $(addprefix -l,$(LD_LIBS))
 
-all: $(PROJECT)-query $(PROJECT)-bench
+define use_cuda
+incs += $(addprefix -I,$(INC_NV))
+libs += $(addprefix -L,$(LD_NV)) $(addprefix -l,$(LIB_NV))
+defs += -DCUDA_ENABLED
+endef
 
-clean:
-	-$(RM) $(QUERY_OBJS)
-	-$(RM) $(BENCH_OBJS)
-	-$(RM) $(PROJECT)-query $(PROJECT)-bench
-
-# Target template
-define target_template
-obj/$(2).%.cu.o: src/%.cu
-	-@mkdir -p $$(@D)
-	$$(NVCC) -std=c++11 --compiler-options "$$(CFLAGS)" $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
-
-obj/$(2).%.cpp.o: src/%.cpp
-	-@mkdir -p $$(@D)
-	$$(CC) -x c++ -std=gnu++11 $$(CFLAGS) $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
-
-obj/$(2).%.c.o: src/%.c
-	-@mkdir -p $$(@D)
-	$$(CC) -x c -std=gnu11 $$(CFLAGS) $$(addprefix -I,$$(INCLUDE)) -o $$@ $$< -c -D$(1)
-
-$(1)_OBJS = $$(SOURCES:src/%=obj/$(2).%.o)
+define use_sisci
+incs += $(addprefix -I,$(INC_DIS))
+libs += $(addprefix -L,$(LD_NV)) $(addprefix -l,$(LIB_NV))
+defs += -DSISCI_ENABLED
 endef
 
 
-$(eval $(call target_template,QUERY,query))
-$(eval $(call target_template,BENCH,bench))
+# Makefile targets
+ifeq ($(filter $(notdir $(shell pwd)),$(DIRS)),)
+.PHONY: all clean $(DIRS)
 
-$(PROJECT)-query: $(QUERY_OBJS)
-	$(NVCC) -o $@ $^ -lsisci $(addprefix -L,$(LD_PATH)) -lcuda
+all: $(DIRS)
 
-$(PROJECT)-bench: $(BENCH_OBJS)
-	$(NVCC) -o $@ $^ -lsisci $(addprefix -L,$(LD_PATH)) -lcuda
+$(DIRS):
+	$(MAKE) -C $@ 
+
+clean: $(addprefix clean-,$(DIRS))
+
+clean-%: %
+	$(MAKE) -C $< clean
+
+endif
+
+
+# How to compile different source code files
+%.o: %.cu
+		$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(incs) -o $@ $< -c $(defs)
+
+%.o: %.cpp
+		$(CC) -x c++ -std=gnu++11 $(CFLAGS) $(incs) -o $@ $< -c $(defs)
+
+%.o: %.c
+		$(CC) -x c -std=gnu11 $(CFLAGS) $(incs) -o $@ $< -c $(defs)
 

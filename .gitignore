@@ -1,5 +1,2 @@
 .*.swp
 *.o
-obj/*
-gd-bench
-gd-query
