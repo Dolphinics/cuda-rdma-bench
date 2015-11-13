@@ -24,9 +24,10 @@
         check( (testcase) ); \
         check( cudaDeviceSynchronize() ); \
         __end = usecs(); \
-        PrintMeasurement( (func), (mem_type), (dev), (from), (to), size, __end - __start); \
+        PrintMeasurement( (func), (mem_type), (dev), (from), (to), size, __end - __start, stringify(testcase)); \
     } while (0) 
 
+#define stringify(s) #s
 
 static int verbosity = 0;
 
@@ -102,7 +103,7 @@ __host__ void ListDevices()
 }
 
 
-__host__ void PrintMeasurement(const char* func_name, const char* mem_type, int ctl, int src, int dst, size_t size, uint64_t usec)
+__host__ void PrintMeasurement(const char* func_name, const char* mem_type, int ctl, int src, int dst, size_t size, uint64_t usec, const char* s)
 {
 
     fprintf(stdout, "%-16s :: %-21s",
@@ -148,8 +149,12 @@ __host__ void PrintMeasurement(const char* func_name, const char* mem_type, int 
 
     if (verbosity > 2)
     {
-
-        fprintf(stdout, " :: %lu MB copied in %lu µs", 
+        fprintf(stdout, "\n\t");
+        if (verbosity > 3)
+        {
+            fprintf(stdout, "%s", s);
+        }
+        fprintf(stdout, "\t--\t%lu MB copied in %lu µs\n", 
                 size / 1000000L,
                 usec);
     }
