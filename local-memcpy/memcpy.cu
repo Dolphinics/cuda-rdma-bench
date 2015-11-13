@@ -14,15 +14,17 @@
         } \
     } while (0)
 
-#define test( dev, testcase ) \
+#define test( dev, func, mem_type, from, to, testcase ) \
     do { \
+        uint64_t __end, __start; \
         check( cudaDeviceSynchronize() ); \
         check( cudaSetDevice((dev)) ); \
         check( cudaDeviceSynchronize() ); \
-        start = usecs(); \
+        __start = usecs(); \
         check( (testcase) ); \
         check( cudaDeviceSynchronize() ); \
-        end = usecs(); \
+        __end = usecs(); \
+        PrintMeasurement( (func), (mem_type), (dev), (from), (to), size, __end - __start); \
     } while (0) 
 
 
@@ -55,29 +57,101 @@ __host__ void GetDeviceName(int dev, char* name, size_t len)
     strncpy(name, prop.name, len);
 }
 
+__host__ void ListDevices()
+{
+    int dev_count;
+    int curr_dev;
 
-__host__ void PrintMeasurement(const char* func_name, const char* mem_type, int src, int dst, size_t size, uint64_t usec)
+    cudaError_t err;
+
+    err = cudaGetDeviceCount(&dev_count);
+    if (err != cudaSuccess)
+    {
+        fprintf(stderr, "%s\n", cudaGetErrorString(err));
+        exit(1);
+    }
+
+    fprintf(stdout, "%2d %-12s\n", -1, "Host");
+    for (curr_dev = 0; curr_dev < dev_count; ++curr_dev)
+    {
+        cudaDeviceProp devProperties;
+
+        GetDeviceInfo(curr_dev, &devProperties);
+
+        fprintf(stdout, "%2d %-12s: %02x:%02x.%x [%s]\n", 
+                curr_dev, devProperties.name, 
+                devProperties.pciBusID, devProperties.pciDomainID, devProperties.pciDeviceID,
+                devProperties.computeMode != cudaComputeModeProhibited ? "enabled" : "disabled"
+                );
+
+        if (verbosity > 1)
+        {
+            int i;
+            for (i = 0; i < dev_count; ++i)
+            {
+                int access = 0;
+                err = cudaDeviceCanAccessPeer(&access, curr_dev, i);
+                if (err != cudaSuccess)
+                {
+                    exit(1);
+                }
+                fprintf(stdout, "\tcan access device %2d: %s\n", i, access ? "yes" : "no");
+            }
+        }
+    }
+}
+
+
+__host__ void PrintMeasurement(const char* func_name, const char* mem_type, int ctl, int src, int dst, size_t size, uint64_t usec)
 {
 
-    fprintf(stdout, "%-16s :: %-28s :: %2d -> %2d :: %12.3f MB/s",
+    fprintf(stdout, "%-16s :: %-21s",
             func_name,
-            mem_type,
-            src,
-            dst,
-            ((double) size) / ((double) usec)
-            );
+            mem_type);
 
-    if (verbosity > 0)
+    if (verbosity > 1)
     {
+        char ctl_name[256];
         char src_name[256];
         char dst_name[256];
 
+        GetDeviceName(ctl, ctl_name, sizeof(ctl_name));
         GetDeviceName(src, src_name, sizeof(src_name));
         GetDeviceName(dst, dst_name, sizeof(dst_name));
 
-        fprintf(stdout, " :: %lu MB copied in %lu µs from '%s' to '%s'", 
+        fprintf(stdout, " :: ctl=%d %-12s",
+                ctl, ctl_name);
+
+        fprintf(stdout, " :: src=%d %-12s -> dst=%d %-12s",
+                src, src_name, dst, dst_name);
+    }
+    else
+    {
+        if (verbosity > 0)
+        {
+            fprintf(stdout, " :: ctl=%2d", ctl);
+            fprintf(stdout, " :: src=%2d -> dst=%2d",
+                    src,
+                    dst);
+        }
+        else
+        {
+            fprintf(stdout, " :: %2d -> %2d",
+                    src,
+                    dst);
+        }
+    }
+           
+    fprintf(stdout, " :: %12.3f MB/s",
+            ((double) size) / ((double) usec)
+            );
+
+    if (verbosity > 2)
+    {
+
+        fprintf(stdout, " :: %lu MB copied in %lu µs", 
                 size / 1000000L,
-                usec, src_name, dst_name);
+                usec);
     }
 
     fprintf(stdout, "\n");
@@ -143,146 +217,94 @@ __host__ void MeasureMemcpy(size_t size, int dev_src, int dev_dst)
     void* mem_src = AllocDeviceMemory(size, dev_src);
     void* mem_host = NULL;
 
-    uint64_t end, start;
-
-
     // HOST TO DEVICE
     fprintf(stdout, "\nHOST TO DEVICE\n");
 
     mem_host = malloc(size);
-    test( dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
+    test( dev_dst, "cudaMemcpy", "malloc'd", -1, dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
     free(mem_host);
-    PrintMeasurement("cudaMemcpy", "malloc'd", -1, dev_dst, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocDefault);
-    test( dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocDefault", -1, dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocDefault", -1, dev_dst, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocPortable);
-    test( dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocPortable", -1, dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocPortable", -1, dev_dst, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocMapped);
-    test( dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocMapped", -1, dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocMapped", -1, dev_dst, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocWriteCombined);
-    test( dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocWriteCom", -1, dev_dst, cudaMemcpy(mem_dst, mem_host, size, cudaMemcpyHostToDevice) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocWriteCombined", -1, dev_dst, size, end - start);
 
 
     // DEVICE TO HOST
     fprintf(stdout, "\nDEVICE TO HOST\n");
 
     mem_host = malloc(size);
-    test( dev_dst, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
+    test( dev_dst, "cudaMemcpy", "malloc'd", dev_dst, -1, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
     free(mem_host);
-    PrintMeasurement("cudaMemcpy", "malloc'd", dev_dst, -1, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocDefault);
-    test( dev_dst, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocDefault", dev_dst, -1, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocDefault", dev_dst, -1, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocPortable);
-    test( dev_dst, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocPortable", dev_dst, -1, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocPortable", dev_dst, -1, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocMapped);
-    test( dev_dst, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocMapped", dev_dst, -1, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocMapped", dev_dst, -1, size, end - start);
 
     mem_host = AllocHostMemory(size, cudaHostAllocWriteCombined);
-    test( dev_dst, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
+    test( dev_dst, "cudaMemcpy", "cudaHostAllocWriteCom", dev_dst, -1, cudaMemcpy(mem_host, mem_dst, size, cudaMemcpyDeviceToHost) );
     cudaFreeHost(mem_host);
-    PrintMeasurement("cudaMemcpy", "cudaHostAllocWriteCombined", dev_dst, -1, size, end - start);
+
 
 
     // DEVICE TO DEVICE
     fprintf(stdout, "\nDEVICE TO DEVICE\n");
 
-    test( dev_src, cudaMemcpy(mem_src, mem_dst, size, cudaMemcpyDeviceToDevice) );
-    PrintMeasurement("cudaMemcpy", "cudaMalloc", dev_src, dev_dst, size, end - start);
+    test( dev_src, "cudaMemcpy", "cudaMalloc", dev_src, dev_dst, cudaMemcpy(mem_src, mem_dst, size, cudaMemcpyDeviceToDevice) );
 
-    test( dev_src, cudaMemcpy(mem_dst, mem_src, size, cudaMemcpyDeviceToDevice) );
-    PrintMeasurement("cudaMemcpy", "cudaMalloc", dev_dst, dev_src, size, end - start);
+    test( dev_src, "cudaMemcpy", "cudaMalloc", dev_dst, dev_src, cudaMemcpy(mem_dst, mem_src, size, cudaMemcpyDeviceToDevice) );
    
-    test( dev_dst, cudaMemcpy(mem_src, mem_dst, size, cudaMemcpyDeviceToDevice) );
-    PrintMeasurement("cudaMemcpy", "cudaMalloc", dev_src, dev_dst, size, end - start);
+    test( dev_dst, "cudaMemcpy", "cudaMalloc", dev_src, dev_dst, cudaMemcpy(mem_src, mem_dst, size, cudaMemcpyDeviceToDevice) );
 
-    test( dev_dst, cudaMemcpy(mem_dst, mem_src, size, cudaMemcpyDeviceToDevice) );
-    PrintMeasurement("cudaMemcpy", "cudaMalloc", dev_dst, dev_src, size, end - start);
+    test( dev_dst, "cudaMemcpy", "cudaMalloc", dev_dst, dev_src, cudaMemcpy(mem_dst, mem_src, size, cudaMemcpyDeviceToDevice) );
 
-    test( dev_src, cudaMemcpyPeer(mem_src, dev_src, mem_dst, dev_dst, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
+    test( dev_src, "cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, cudaMemcpyPeer(mem_src, dev_src, mem_dst, dev_dst, size) );
 
-    test( dev_src, cudaMemcpyPeer(mem_dst, dev_dst, mem_src, dev_src, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_dst, dev_src, size, end - start);
+    test( dev_src, "cudaMemcpyPeer", "cudaMalloc", dev_dst, dev_src, cudaMemcpyPeer(mem_dst, dev_dst, mem_src, dev_src, size) );
 
-    test( dev_dst, cudaMemcpyPeer(mem_src, dev_src, mem_dst, dev_dst, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
+    test( dev_dst, "cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, cudaMemcpyPeer(mem_src, dev_src, mem_dst, dev_dst, size) );
 
-    test( dev_dst, cudaMemcpyPeer(mem_dst, dev_dst, mem_src, dev_src, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_dst, dev_src, size, end - start);
+    test( dev_dst, "cudaMemcpyPeer", "cudaMalloc", dev_dst, dev_src, cudaMemcpyPeer(mem_dst, dev_dst, mem_src, dev_src, size) );
 
-#define INSANITY
-#ifdef INSANITY
-    test( dev_src, cudaMemcpyPeer(mem_src, dev_dst, mem_dst, dev_src, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
 
-    test( dev_src, cudaMemcpyPeer(mem_dst, dev_src, mem_src, dev_dst, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
 
-    test( dev_dst, cudaMemcpyPeer(mem_src, dev_dst, mem_dst, dev_src, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
+    // Use opposite devices
+    test( dev_src, "cudaMemcpyPeer*", "cudaMalloc", dev_dst, dev_src, cudaMemcpyPeer(mem_src, dev_dst, mem_dst, dev_src, size) );
 
-    test( dev_dst, cudaMemcpyPeer(mem_dst, dev_src, mem_src, dev_dst, size) );
-    PrintMeasurement("cudaMemcpyPeer", "cudaMalloc", dev_src, dev_dst, size, end - start);
-#endif
+    test( dev_src, "cudaMemcpyPeer*", "cudaMalloc", dev_src, dev_dst, cudaMemcpyPeer(mem_dst, dev_src, mem_src, dev_dst, size) );
 
-    fprintf(stdout, "\n");
+    test( dev_dst, "cudaMemcpyPeer*", "cudaMalloc", dev_dst, dev_src, cudaMemcpyPeer(mem_src, dev_dst, mem_dst, dev_src, size) );
+
+    test( dev_dst, "cudaMemcpyPeer*", "cudaMalloc", dev_src, dev_dst, cudaMemcpyPeer(mem_dst, dev_src, mem_src, dev_dst, size) );
 
     // Release resources
     cudaFree(mem_src);
     cudaFree(mem_dst);
+
+    // Print device list
+    fprintf(stdout, "\nDEVICE LEGEND\n");
+    ListDevices();
 }
     
-
-__host__ void ListDevices()
-{
-    int dev_count;
-    int curr_dev;
-
-    cudaError_t err;
-
-    err = cudaGetDeviceCount(&dev_count);
-    if (err != cudaSuccess)
-    {
-        fprintf(stderr, "%s\n", cudaGetErrorString(err));
-        exit(1);
-    }
-
-    fprintf(stdout, "%d %s: N/A [N/A]\n", -1, "Host");
-    for (curr_dev = 0; curr_dev < dev_count; ++curr_dev)
-    {
-        cudaDeviceProp devProperties;
-
-        GetDeviceInfo(curr_dev, &devProperties);
-
-        fprintf(stdout, "%d %s: %02x:%02x.%x [%s]\n", 
-                curr_dev, devProperties.name, 
-                devProperties.pciBusID, devProperties.pciDomainID, devProperties.pciDeviceID,
-                devProperties.computeMode != cudaComputeModeProhibited ? "enabled" : "disabled"
-                );
-    }
-}
-
 
 int main(int argc, char** argv)
 {
@@ -317,6 +339,7 @@ int main(int argc, char** argv)
                 goto giveUsage;
 
             case 'l': // list CUDA enabled devices
+                verbosity = 100;
                 ListDevices();
                 return 0;
 
