@@ -1,5 +1,5 @@
 # Source code directories
-DIRS 	:= local-memcpy
+DIRS 	:= local-memcpy remote-memcpy
 
 # Common libraries
 LD_LIBS := rt
@@ -23,8 +23,8 @@ LD_NV	:=
 LIB_DIS	:= sisci
 LIB_NV	:= cuda
 
-
-libs += $(addprefix -L,$(LD_PATH)) $(addprefix -l,$(LD_LIBS))
+incs += -Ishared
+libs += $(addprefix -L,$(LD_PATH)) $(addprefix -l,$(LD_LIBS)) -lshared/benchmark.o
 
 define use_cuda
 incs += $(addprefix -I,$(INC_NV))
@@ -58,11 +58,11 @@ endif
 
 # How to compile different source code files
 %.o: %.cu
-		$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(incs) -o $@ $< -c $(defs)
+		$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(incs) -o $@ $< -c $(defs) $(hdrs)
 
 %.o: %.cpp
-		$(CC) -x c++ -std=gnu++11 $(CFLAGS) $(incs) -o $@ $< -c $(defs)
+		$(CC) -x c++ -std=gnu++11 $(CFLAGS) $(incs) -o $@ $< -c $(defs) $(hdrs)
 
 %.o: %.c
-		$(CC) -x c -std=gnu11 $(CFLAGS) $(incs) -o $@ $< -c $(defs)
+		$(CC) -x c -std=gnu11 $(CFLAGS) $(incs) -o $@ $< -c $(defs) $(hdrs)
 
