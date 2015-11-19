@@ -11,20 +11,20 @@ INCLUDE	:= 			\
 # Targets
 .PHONY: all clean libshcuda.so libshsci.so
 
-all: libshcuda.so libshsci.so
+all: libshcuda.a libshsci.a
 
 clean:
-	-$(RM) libsh*.so sh*.o
+	-$(RM) libsh*.a libsh*.so sh*.o
 
-libshcuda.so: shcuda.o
-	$(CC) -shared -o $@ $^
+libshcuda.a: shcuda.o
+	$(NVCC) -shared -o $@ $^
 
-libshsci.so: shsci.o
+libshsci.a: shsci.o
 	$(CC) -shared -o $@ $^
 
 # How to compile
 %.o: %.cu
-	$(NVCC) --compiler-options "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(NVCC) -x cu -Xcompiler "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
 
 %.o: %.c
 	$(CC) -x c -std=gnu99 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c

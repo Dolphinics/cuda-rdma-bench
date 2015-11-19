@@ -13,6 +13,7 @@
 # Ignore object files
 *.o
 *.so
+*.a
 
 # Ignore swap files and backup-files
 .*.swp
