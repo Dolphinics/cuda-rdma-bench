@@ -9,22 +9,22 @@ INCLUDE	:= 			\
 	/usr/local/cuda/include
 
 # Targets
-.PHONY: shared_cuda shared_sisci all clean
+.PHONY: all clean libshcuda.so libshsci.so
 
-all: shared_cuda shared_sisci
+all: libshcuda.so libshsci.so
 
 clean:
-	-$(RM) cuda_shared.o sci_shared.o
+	-$(RM) libsh*.so sh*.o
 
-shared_cuda: cuda_shared.o
-	$(CC) -shared -fPIC -o $@ $^
+libshcuda.so: shcuda.o
+	$(CC) -shared -o $@ $^
 
-shared_sisci: sci_shared.o
-	$(CC) -shared -fPIC -o $@ $^
+libshsci.so: shsci.o
+	$(CC) -shared -o $@ $^
 
 # How to compile
 %.o: %.cu
-	$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(NVCC) -std=c++11 --compiler-options "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
 
 %.o: %.c
-	$(CC) -x c -std=gnu11 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(CC) -x c -std=gnu11 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c

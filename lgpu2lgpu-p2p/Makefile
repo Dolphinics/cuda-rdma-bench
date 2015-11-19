@@ -1,9 +1,8 @@
 PROJECT := lgpu2lgpu-p2p
 OBJECTS	:= p2pmemcpy.o
 
-CC	:= gcc
 CFLAGS	:= -Wall -Wextra
-NVCC 	:= /usr/local/cuda/bin/nvcc
+CC 	:= /usr/local/cuda/bin/nvcc
 
 INCLUDE	:= /usr/local/cuda/include ../shared
 LD_PATH := ../shared
@@ -16,7 +15,7 @@ clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
 $(PROJECT): $(OBJECTS)
-	$(CC) -o $@ $^ -lshared_cuda
+	$(CC) -o $@ $^ $(addprefix -L,$(LD_PATH)) -lshcuda
 
 %.o: %.cu
-	$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(CC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c

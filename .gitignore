@@ -1,2 +1,19 @@
-.*.swp
+# Ignore all
+*
+
+# Unignore makefiles
+!Makefile
+
+# Unignore all with extensions
+!*.*
+
+# Unignore all directories
+!*/
+
+# Ignore object files
 *.o
+*.so
+
+# Ignore swap files and backup-files
+.*.swp
+*~

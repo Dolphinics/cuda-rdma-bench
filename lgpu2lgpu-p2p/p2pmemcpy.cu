@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
-#include "shared_cuda.h"
+#include "cuda_shared.h"
 
 static size_t factor = 1000L;
 
