@@ -106,10 +106,136 @@ void AllocHostAndDevBufs(int dev, uint8_t** devptr, uint8_t** hostptr, size_t si
     cudaCheckError();
 }
 
-void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int p2p, int pinned, unsigned memType, int repeat, int verify)
+void PrepareBenchmark(int dev, cudaEvent_t* start, cudaEvent_t* stop)
+{
+    cudaSetDevice(dev);
+
+    cudaEventCreate(start);
+    cudaCheckError();
+    cudaEventCreate(stop);
+    cudaCheckError();
+
+    cudaDeviceSynchronize();
+    cudaCheckError();
+}
+
+double GigabytesPerSecond(cudaEvent_t start, cudaEvent_t stop, size_t size, int repeats)
 {
     float time_ms;
     double time_s, gigabytes;
+    
+    cudaEventElapsedTime(&time_ms, start, stop);
+    time_s = time_ms / (double) 1e3;
+    gigabytes = (size * repeats) / (double) (factor * factor * factor);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    return gigabytes / time_s;
+}
+
+double Microseconds(cudaEvent_t start, cudaEvent_t stop, int repeats)
+{
+    float time_ms;
+    double time_us;
+
+    cudaEventElapsedTime(&time_ms, start, stop);
+    time_us = (time_ms * 1e3) / ((double) repeats);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    return time_us;
+}
+
+void MeasureLatency(int ctlDev, int srcDev, int dstDev, int bidirectional, int p2p, int pinned, unsigned memType, int repeat)
+{
+    double usecs;
+    cudaEvent_t start, stop;
+
+    uint8_t *srcBuf, *srcPtr;
+    cudaStream_t srcStream;
+    AllocHostAndDevBufs(srcDev, &srcPtr, &srcBuf, 1, pinned, memType, &srcStream);
+
+    uint8_t *dstBuf, *dstPtr;
+    cudaStream_t dstStream;
+    AllocHostAndDevBufs(dstDev, &dstPtr, &dstBuf, 1, pinned, memType, &dstStream);
+
+    ConfigureP2P(ctlDev, srcDev, dstDev, bidirectional, p2p);
+
+
+    // HOST TO DEVICE
+    PrepareBenchmark(srcDev, &start, &stop);
+
+    cudaEventRecord(start);
+    for (int i = 0; i < repeat; ++i)
+    {
+        cudaMemcpyAsync(srcPtr, srcBuf, 1, cudaMemcpyHostToDevice);
+    }
+    cudaEventRecord(stop);
+
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    usecs = Microseconds(start, stop, repeat);
+    printf("Host to device  : %6.02f %s\n", usecs, "µs");
+
+    
+    // DEVICE TO DEVICE
+    PrepareBenchmark(ctlDev, &start, &stop);
+
+    cudaEventRecord(start);
+    // cudaMemcpyPeerAsync will fall back to cudaMemcpyAsync when p2p is disabled
+    for (int i = 0; i < repeat; ++i)
+    {
+        cudaMemcpyPeerAsync(dstPtr, dstDev, srcPtr, srcDev, 1, dstStream);
+        if (bidirectional)
+        {
+            cudaMemcpyPeerAsync(srcPtr, srcDev, dstPtr, dstDev, 1, srcStream);
+        }
+    }
+    cudaEventRecord(stop);
+
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    usecs = Microseconds(start, stop, repeat);
+    printf("Device to device: %6.02f %s\n", usecs, "µs");
+
+
+    // DEVICE TO HOST
+    PrepareBenchmark(dstDev, &start, &stop);
+
+    cudaEventRecord(start);
+    for (int i = 0; i < repeat; ++i)
+    {
+        cudaMemcpyAsync(dstBuf, dstPtr, 1, cudaMemcpyDeviceToHost);
+    }
+    cudaEventRecord(stop);
+
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    usecs = Microseconds(start, stop, repeat);
+    printf("Device to host  : %6.02f %s\n", usecs, "µs");
+
+
+    cudaFreeHost(srcBuf);
+    cudaFreeHost(dstBuf);
+
+    cudaSetDevice(srcDev);
+    cudaFree(srcPtr);
+    cudaStreamDestroy(srcStream);
+
+    cudaSetDevice(dstDev);
+    cudaFree(dstPtr);
+    cudaStreamDestroy(dstStream);
+}
+
+void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int p2p, int pinned, unsigned memType, int repeat, int verify)
+{
+    double gbps;
+    cudaEvent_t start, stop;
 
     uint8_t *srcBuf, *srcPtr;
     cudaStream_t srcStream;
@@ -127,57 +253,29 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
         {
             srcBuf[i] = rand() & 255;
         }
-
-        if (!(memType & cudaHostAllocMapped))
-        {
-            cudaSetDevice(srcDev);
-
-            cudaEvent_t start, stop;
-            cudaEventCreate(&start);
-            cudaCheckError();
-            cudaEventCreate(&stop);
-            cudaCheckError();
-
-            cudaDeviceSynchronize();
-            cudaCheckError();
-
-            cudaEventRecord(start);
-            for (int i = 0; i < repeat; ++i)
-            {
-                cudaMemcpyAsync(srcPtr, srcBuf, memSize, cudaMemcpyHostToDevice);
-            }
-            cudaEventRecord(stop);
-
-            cudaDeviceSynchronize();
-            cudaCheckError();
-
-            cudaEventElapsedTime(&time_ms, start, stop);
-            time_s = time_ms / (double) 1e3;
-            gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
-
-            cudaEventDestroy(start);
-            cudaEventDestroy(stop);
-
-            printf("Host to device  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
-        }
-        else
-        {
-            printf("Host to device  : memory is mapped\n");
-        }
     }
 
-    cudaSetDevice(ctlDev);
+    // Host to device
+    PrepareBenchmark(srcDev, &start, &stop);
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaCheckError();
-    cudaEventCreate(&stop);
-    cudaCheckError();
+    cudaEventRecord(start);
+    for (int i = 0; i < repeat; ++i)
+    {
+        cudaMemcpyAsync(srcPtr, srcBuf, memSize, cudaMemcpyHostToDevice);
+    }
+    cudaEventRecord(stop);
 
     cudaDeviceSynchronize();
     cudaCheckError();
-    cudaEventRecord(start);
 
+    gbps = GigabytesPerSecond(start, stop, memSize, repeat);
+    printf("Host to device  : %6.02f %s\n", gbps, factor == 1024L ? "GiB/s" : "GB/s");
+
+
+    // Device to device
+    PrepareBenchmark(ctlDev, &start, &stop);
+
+    cudaEventRecord(start);
     // cudaMemcpyPeerAsync will fall back to cudaMemcpyAsync when p2p is disabled
     for (int i = 0; i < repeat; ++i)
     {
@@ -187,59 +285,34 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
             cudaMemcpyPeerAsync(srcPtr, srcDev, dstPtr, dstDev, memSize, srcStream);
         }
     }
-
     cudaEventRecord(stop);
+
     cudaDeviceSynchronize();
     cudaCheckError();
 
-    cudaEventElapsedTime(&time_ms, start, stop);
-    time_s = time_ms / (double) 1e3;
-    gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
+    gbps = GigabytesPerSecond(start, stop, memSize, repeat);
+    printf("Device to device: %6.02f %s\n", gbps, factor == 1024L ? "GiB/s" : "GB/s");
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
 
-    printf("Device to device: %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
+    // Device to host
+    PrepareBenchmark(dstDev, &start, &stop);
+
+    cudaEventRecord(start);
+    for (int i = 0; i < repeat; ++i)
+    {
+        cudaMemcpyAsync(dstBuf, dstPtr, memSize, cudaMemcpyDeviceToHost);
+    }
+    cudaEventRecord(stop);
+
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    gbps = GigabytesPerSecond(start, stop, memSize, repeat);
+    printf("Device to host  : %6.02f %s\n", gbps, factor == 1024L ? "GiB/s" : "GB/s");
+
 
     if (verify)
     {
-        if (!(memType & cudaHostAllocMapped))
-        {
-            cudaSetDevice(dstDev);
-
-            cudaEvent_t start, stop;
-            cudaEventCreate(&start);
-            cudaCheckError();
-            cudaEventCreate(&stop);
-            cudaCheckError();
-
-            cudaDeviceSynchronize();
-            cudaCheckError();
-
-            cudaEventRecord(start);
-            for (int i = 0; i < repeat; ++i)
-            {
-                cudaMemcpyAsync(dstBuf, dstPtr, memSize, cudaMemcpyDeviceToHost);
-            }
-            cudaEventRecord(stop);
-
-            cudaDeviceSynchronize();
-            cudaCheckError();
-
-            cudaEventElapsedTime(&time_ms, start, stop);
-            time_s = time_ms / (double) 1e3;
-            gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
-
-            cudaEventDestroy(start);
-            cudaEventDestroy(stop);
-
-            printf("Device to host  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
-        }
-        else
-        {
-            printf("Device to host  : memory is mapped\n");
-        }
-
         size_t i;
         for (i = 0; i < memSize && srcBuf[i] == dstBuf[i]; ++i);
 
@@ -358,11 +431,11 @@ int main(int argc, char** argv)
 
     // Parse command line options
     struct option opts[] = {
-        { .name = "srcdev", .has_arg = 1, .flag = NULL, 1 },
-        { .name = "dstdev", .has_arg = 1, .flag = NULL, 2 },
-        { .name = "size", .has_arg = 1, .flag = NULL, 3 },
-        { .name = "peer", .has_arg = 0, .flag = NULL, 4 },
-        { .name = "help", .has_arg = 0, .flag = NULL, 'h' },
+        { .name = "srcdev", .has_arg = 1, .flag = NULL, .val = 1 },
+        { .name = "dstdev", .has_arg = 1, .flag = NULL, .val = 2 },
+        { .name = "size", .has_arg = 1, .flag = NULL, .val = 3 },
+        { .name = "peer", .has_arg = 0, .flag = NULL, .val = 4 },
+        { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
     };
     int opt, optidx;
     char* strptr;
@@ -482,7 +555,6 @@ int main(int argc, char** argv)
     // Calculate chunk size
     size = size * factor * factor;
 
-    // If 
     if (!!(memtype & cudaHostAllocMapped))
     {
         cudaSetDevice(srcDevice);
@@ -493,7 +565,6 @@ int main(int argc, char** argv)
         cudaCheckError();
     }
     
-    // Allocate host buffer
     MeasureBandwidth(
             oppositeDevice ? dstDevice : srcDevice, 
             srcDevice, 
@@ -505,7 +576,18 @@ int main(int argc, char** argv)
             memtype,
             repeat,
             verify
-    );
+            );
+
+    MeasureLatency(
+            oppositeDevice ? dstDevice : srcDevice, 
+            srcDevice, 
+            dstDevice, 
+            bidirectional, 
+            usePeer2Peer,
+            pinned,
+            memtype,
+            repeat * 1e3 
+            );
 
     return 0;
 
