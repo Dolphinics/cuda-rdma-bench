@@ -24,7 +24,7 @@ libshsci.so: shsci.o
 
 # How to compile
 %.o: %.cu
-	$(NVCC) -std=c++11 --compiler-options "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(NVCC) --compiler-options "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
 
 %.o: %.c
-	$(CC) -x c -std=gnu11 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(CC) -x c -std=gnu99 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
