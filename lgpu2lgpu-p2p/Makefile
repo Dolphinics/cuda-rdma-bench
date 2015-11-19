@@ -15,7 +15,7 @@ clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
 $(PROJECT): $(OBJECTS)
-	$(CC) -o $@ $^ $(addprefix -L,$(LD_PATH)) -lshcuda
+	$(CC) -o $@ $^ $(addprefix -L,$(LD_PATH)) -lshcuda -lcudart
 
 %.o: %.cu
 	$(CC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
