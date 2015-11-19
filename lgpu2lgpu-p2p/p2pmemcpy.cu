@@ -62,11 +62,11 @@ void ConfigureP2P(int ctl, int src, int dst, int bidirect, int useP2P)
     }
     else
     {
-        DisableP2P(dev1, dev2);
-        if (bidirect)
-        {
+        //DisableP2P(dev1, dev2);
+        //if (bidirect)
+        /*{
             DisableP2P(dev2, dev1);
-        }
+        }*/
     }
 }
 
@@ -121,13 +121,6 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
 
     ConfigureP2P(ctlDev, srcDev, dstDev, bidirectional, p2p);
 
-    cudaEvent_t start, stop;
-
-    cudaEventCreate(&start);
-    cudaCheckError();
-    cudaEventCreate(&stop);
-    cudaCheckError();
-
     if (verify)
     {
         for (size_t i = 0; i < memSize; ++i)
@@ -138,6 +131,13 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
         if (!(memType & cudaHostAllocMapped))
         {
             cudaSetDevice(srcDev);
+
+            cudaEvent_t start, stop;
+            cudaEventCreate(&start);
+            cudaCheckError();
+            cudaEventCreate(&stop);
+            cudaCheckError();
+
             cudaDeviceSynchronize();
             cudaCheckError();
 
@@ -155,6 +155,9 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
             time_s = time_ms / (double) 1e3;
             gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
 
+            cudaEventDestroy(start);
+            cudaEventDestroy(stop);
+
             printf("Host to device  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
         }
         else
@@ -164,6 +167,13 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
     }
 
     cudaSetDevice(ctlDev);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaCheckError();
+    cudaEventCreate(&stop);
+    cudaCheckError();
+
     cudaDeviceSynchronize();
     cudaCheckError();
     cudaEventRecord(start);
@@ -186,6 +196,9 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
     time_s = time_ms / (double) 1e3;
     gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
 
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
     printf("Device to device: %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
 
     if (verify)
@@ -193,6 +206,13 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
         if (!(memType & cudaHostAllocMapped))
         {
             cudaSetDevice(srcDev);
+
+            cudaEvent_t start, stop;
+            cudaEventCreate(&start);
+            cudaCheckError();
+            cudaEventCreate(&stop);
+            cudaCheckError();
+
             cudaDeviceSynchronize();
             cudaCheckError();
 
@@ -209,6 +229,9 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
             cudaEventElapsedTime(&time_ms, start, stop);
             time_s = time_ms / (double) 1e3;
             gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
+
+            cudaEventDestroy(start);
+            cudaEventDestroy(stop);
 
             printf("Device to host  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
         }
@@ -228,9 +251,6 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
 
     cudaFreeHost(srcBuf);
     cudaFreeHost(dstBuf);
-
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
 
     cudaSetDevice(srcDev);
     cudaFree(srcPtr);
