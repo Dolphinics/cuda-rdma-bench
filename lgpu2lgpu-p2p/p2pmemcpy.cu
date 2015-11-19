@@ -148,7 +148,7 @@ double Microseconds(cudaEvent_t start, cudaEvent_t stop, int repeats)
     return time_us;
 }
 
-void MeasureLatency(int ctlDev, int srcDev, int dstDev, int bidirectional, int p2p, int pinned, unsigned memType, int repeat)
+void MeasureLatency(int ctlDev, int srcDev, int dstDev, int pinned, unsigned memType, int repeat)
 {
     double usecs;
     cudaEvent_t start, stop;
@@ -160,9 +160,6 @@ void MeasureLatency(int ctlDev, int srcDev, int dstDev, int bidirectional, int p
     uint8_t *dstBuf, *dstPtr;
     cudaStream_t dstStream;
     AllocHostAndDevBufs(dstDev, &dstPtr, &dstBuf, 1, pinned, memType, &dstStream);
-
-    ConfigureP2P(ctlDev, srcDev, dstDev, bidirectional, p2p);
-
 
     // HOST TO DEVICE
     PrepareBenchmark(srcDev, &start, &stop);
@@ -189,10 +186,6 @@ void MeasureLatency(int ctlDev, int srcDev, int dstDev, int bidirectional, int p
     for (int i = 0; i < repeat; ++i)
     {
         cudaMemcpyPeerAsync(dstPtr, dstDev, srcPtr, srcDev, 1, dstStream);
-        if (bidirectional)
-        {
-            cudaMemcpyPeerAsync(srcPtr, srcDev, dstPtr, dstDev, 1, srcStream);
-        }
     }
     cudaEventRecord(stop);
 
@@ -232,7 +225,7 @@ void MeasureLatency(int ctlDev, int srcDev, int dstDev, int bidirectional, int p
     cudaStreamDestroy(dstStream);
 }
 
-void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int p2p, int pinned, unsigned memType, int repeat, int verify)
+void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int pinned, unsigned memType, int repeat, int verify)
 {
     double gbps;
     cudaEvent_t start, stop;
@@ -244,8 +237,6 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
     uint8_t *dstBuf, *dstPtr;
     cudaStream_t dstStream;
     AllocHostAndDevBufs(dstDev, &dstPtr, &dstBuf, memSize, pinned, memType, &dstStream);
-
-    ConfigureP2P(ctlDev, srcDev, dstDev, bidirectional, p2p);
 
     if (verify)
     {
@@ -525,9 +516,9 @@ int main(int argc, char** argv)
             case 'r': // set number of times to repeat
                 strptr = NULL;
                 repeat = strtoul(optarg, &strptr, 0);
-                if (strptr == NULL || *strptr != '\0' || repeat <= 0 || repeat > 1000)
+                if (strptr == NULL || *strptr != '\0' || repeat <= 0)
                 {
-                    fprintf(stderr, "Option -r requires a valid number between 1 and 1000\n");
+                    fprintf(stderr, "Option -r requires a valid number equal to or larger than 1\n");
                     return 1;
                 }
                 break;
@@ -565,13 +556,20 @@ int main(int argc, char** argv)
         cudaCheckError();
     }
     
+    ConfigureP2P(
+            oppositeDevice ? dstDevice : srcDevice, 
+            srcDevice,
+            dstDevice,
+            bidirectional,
+            usePeer2Peer
+            );
+
     MeasureBandwidth(
             oppositeDevice ? dstDevice : srcDevice, 
             srcDevice, 
             dstDevice, 
             size, 
             bidirectional, 
-            usePeer2Peer,
             pinned,
             memtype,
             repeat,
@@ -582,11 +580,9 @@ int main(int argc, char** argv)
             oppositeDevice ? dstDevice : srcDevice, 
             srcDevice, 
             dstDevice, 
-            bidirectional, 
-            usePeer2Peer,
             pinned,
             memtype,
-            repeat * 1e3 
+            repeat * 1e4 
             );
 
     return 0;
