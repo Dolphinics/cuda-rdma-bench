@@ -17,6 +17,7 @@
 
 #define STRINGIFY(s) #s
 
+static size_t factor = 1000L;
 
 void EnableP2P(int dev, int peer)
 {
@@ -152,9 +153,13 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
 
             cudaEventElapsedTime(&time_ms, start, stop);
             time_s = time_ms / (double) 1e3;
-            gigabytes = (memSize * repeat) / (double) 1e9;
+            gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
 
-            printf("Host to device  : %6.02f GB/s\n", gigabytes / time_s);
+            printf("Host to device  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
+        }
+        else
+        {
+            printf("Host to device  : memory is mapped\n");
         }
     }
 
@@ -179,9 +184,9 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
 
     cudaEventElapsedTime(&time_ms, start, stop);
     time_s = time_ms / (double) 1e3;
-    gigabytes = (memSize * repeat) / (double) 1e9;
+    gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
 
-    printf("Device to device: %6.02f GB/s\n", gigabytes / time_s);
+    printf("Device to device: %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
 
     if (verify)
     {
@@ -203,9 +208,13 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
 
             cudaEventElapsedTime(&time_ms, start, stop);
             time_s = time_ms / (double) 1e3;
-            gigabytes = (memSize * repeat) / (double) 1e9;
+            gigabytes = (memSize * repeat) / (double) (factor * factor * factor);
 
-            printf("Device to host  : %6.02f GB/s\n", gigabytes / time_s);
+            printf("Device to host  : %6.02f %s\n", gigabytes / time_s, factor == 1024L ? "GiB/s" : "GB/s");
+        }
+        else
+        {
+            printf("Device to host  : memory is mapped\n");
         }
 
         size_t i;
@@ -301,7 +310,6 @@ void ListDevices()
 int main(int argc, char** argv)
 {
     // Parameters
-    size_t factor = 1000L;
     size_t size = 0;
     int srcDevice = -1;
     int dstDevice = -1;
@@ -312,15 +320,27 @@ int main(int argc, char** argv)
     int repeat = 5;
     unsigned memtype = cudaHostAllocDefault;
 
+    // Get device count
     int devCount = 0;
-    cudaGetDeviceCount(&devCount);
-    cudaCheckError();
+    cudaError_t err;
+    err = cudaGetDeviceCount(&devCount);
+    switch (err)
+    {
+        case cudaErrorNoDevice:
+            fprintf(stderr, "No CUDA capable device detected!\n");
+            return 1;
+
+        default:
+            cudaCheckError();
+            break;
+    }
 
     // Parse command line options
     struct option opts[] = {
-        { .name = "srcdev", .has_arg = 1, .flag = NULL, 's' },
-        { .name = "dstdev", .has_arg = 1, .flag = NULL, 'd' },
-        { .name = "size", .has_arg = 1, .flag = NULL, 'c' },
+        { .name = "srcdev", .has_arg = 1, .flag = NULL, 1 },
+        { .name = "dstdev", .has_arg = 1, .flag = NULL, 2 },
+        { .name = "size", .has_arg = 1, .flag = NULL, 3 },
+        { .name = "peer", .has_arg = 0, .flag = NULL, 4 },
         { .name = "help", .has_arg = 0, .flag = NULL, 'h' },
     };
     int opt, optidx;
@@ -338,7 +358,7 @@ int main(int argc, char** argv)
                 fprintf(stderr, "Unknown option: -%c\n", optopt);
                 goto giveUsage;
 
-            case 's': // set source device
+            case 1: // set source device
                 strptr = NULL;
                 srcDevice = strtoul(optarg, &strptr, 0);
                 if (strptr == NULL || *strptr != '\0' || srcDevice >= devCount)
@@ -348,12 +368,11 @@ int main(int argc, char** argv)
                 }
                 else if (dstDevice == srcDevice)
                 {
-                    fprintf(stderr, "Source device cannot be equal to destination device\n");
-                    return 1;
+                    fprintf(stderr, "NOTE!! Source device is equal to destination device!\n");
                 }
                 break;
 
-            case 'd': // set destination device
+            case 2: // set destination device
                 strptr = NULL;
                 dstDevice = strtoul(optarg, &strptr, 0);
                 if (strptr == NULL || *strptr != '\0' || dstDevice >= devCount)
@@ -363,12 +382,11 @@ int main(int argc, char** argv)
                 }
                 else if (dstDevice == srcDevice)
                 {
-                    fprintf(stderr, "Destination device cannot be equal to source device\n");
-                    //return 1; FIXME: Hack
+                    fprintf(stderr, "NOTE!! Destination device is equal to source device!\n");
                 }
                 break;
 
-            case 'c': // set memory chunk size 
+            case 3: // set memory chunk size 
                 strptr = NULL;
                 size = strtoul(optarg, &strptr, 0);
                 if (strptr == NULL || *strptr != '\0' || size == 0)
@@ -378,20 +396,28 @@ int main(int argc, char** argv)
                 }
                 break;
 
+            case 4: // enable peer-to-peer
+                usePeer2Peer = 1;
+                break;
+
+            case 'v': // verify transfer 
+                verify = 1;
+                break;
+
+            case 'b': // bidirectional benchmark (if p2p is supported+enabled, this will show the difference)
+                bidirectional = 1;
+                break;
+
+            case 'p':
+                memtype |= cudaHostAllocPortable;
+                break;
+
             case 'm':
                 memtype |= cudaHostAllocMapped;
                 break;
 
             case 'w':
                 memtype |= cudaHostAllocWriteCombined;
-                break;
-
-            case 'b': // bidirectional benchmark
-                bidirectional = 1;
-                break;
-
-            case 'p': // use cudaMemcpyPeerAsync instead of cudaMemcpyAsync
-                usePeer2Peer = 1;
                 break;
 
             case 'o': // reverse cudaSetDevice
@@ -406,10 +432,6 @@ int main(int argc, char** argv)
                     fprintf(stderr, "Option -r requires a valid number between 1 and 1000\n");
                     return 1;
                 }
-                break;
-
-            case 'v': // verify transfer by computing checksum of data
-                verify = 1;
                 break;
 
             case 'i': // use MiBs instead of MBs
@@ -435,6 +457,7 @@ int main(int argc, char** argv)
     // Calculate chunk size
     size = size * factor * factor;
 
+    // If 
     if (!!(memtype & cudaHostAllocMapped))
     {
         cudaSetDevice(srcDevice);
@@ -452,7 +475,7 @@ int main(int argc, char** argv)
             dstDevice, 
             size, 
             bidirectional, 
-            usePeer2Peer, 
+            usePeer2Peer,
             memtype,
             repeat,
             verify
@@ -462,20 +485,21 @@ int main(int argc, char** argv)
 
 giveUsage:
     fprintf(stderr, 
-            "Usage: %s --srcdev=<device no> --dstdev=<device no> --size=<size> [options]\n"
+            "Usage: %s --srcdev=<device no> --dstdev=<device no> --size=<size> [--peer] [options]\n"
             "\nArguments\n"
             "  --srcdev=<device no>  CUDA device to copy data from\n"
             "  --dstdev=<device no>  CUDA device to copy data to\n"
             "  --size=<size>         memory chunk size in MB (or MiB if -i is set)\n"
+            "  --peer                enable p2p is possible\n"
             "\nOptions\n"
-            "   -p                   enable p2p if possible\n"
+            "   -v                   verify transfer by copying memory from device and comparing\n"
+            "   -b                   transfer memory in both directions simultaneously\n"
+            "   -p                   use cudaHostAllocPortable flag\n"
             "   -m                   use cudaHostAllocMapped flag\n"
             "   -w                   use cudaHostAllocWriteCombined flag\n"
-            "   -b                   transfer memory in both directions simultaneously\n"
-            "   -o                   make cudaSetDevice set opposite device (push vs pull)\n"
+            "   -o                   make cudaSetDevice set opposite device (pull instead of push)\n"
             "   -r <number>          number of times to repeat (default is 5)\n"
             "   -i                   use IEC units (1024) instead of SI units (1000)\n"
-            "   -v                   verify transfer by setting and comparing the transfered memory\n"
             "   -l                   list CUDA devices and quit\n"
             "\nBuild date: %s %s\n"
             , argv[0], __DATE__, __TIME__);
