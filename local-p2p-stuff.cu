@@ -83,15 +83,27 @@ void ConfigureP2P(int ctl, int src, int dst, int bidirect, int useP2P)
 }
 
 
-void AllocHostAndDevBufs(int dev, uint8_t** devptr, uint8_t** hostptr, size_t size, unsigned type, cudaStream_t* stream)
+void AllocHostAndDevBufs(int dev, uint8_t** devptr, uint8_t** hostptr, size_t size, int pinned, unsigned type, cudaStream_t* stream)
 {
     cudaSetDevice(dev);
     cudaCheckError();
 
-    cudaHostAlloc((void**) hostptr, size, type);
-    cudaCheckError();
+    if (pinned)
+    {
+        cudaHostAlloc((void**) hostptr, size, type);
+        cudaCheckError();
+    }
+    else
+    {
+        *hostptr = (uint8_t*) malloc(size);
+        if (*hostptr == NULL)
+        {
+            perror("malloc");
+            exit(1);
+        }
+    }
 
-    if (!!(type & cudaHostAllocMapped))
+    if (pinned && !!(type & cudaHostAllocMapped))
     {
         cudaHostGetDevicePointer((void**) devptr, (void*) *hostptr, 0);
         cudaCheckError();
@@ -106,18 +118,18 @@ void AllocHostAndDevBufs(int dev, uint8_t** devptr, uint8_t** hostptr, size_t si
     cudaCheckError();
 }
 
-void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int p2p, unsigned memType, int repeat, int verify)
+void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bidirectional, int p2p, int pinned, unsigned memType, int repeat, int verify)
 {
     float time_ms;
     double time_s, gigabytes;
 
     uint8_t *srcBuf, *srcPtr;
     cudaStream_t srcStream;
-    AllocHostAndDevBufs(srcDev, &srcPtr, &srcBuf, memSize, memType, &srcStream);
+    AllocHostAndDevBufs(srcDev, &srcPtr, &srcBuf, memSize, pinned, memType, &srcStream);
 
     uint8_t *dstBuf, *dstPtr;
     cudaStream_t dstStream;
-    AllocHostAndDevBufs(dstDev, &dstPtr, &dstBuf, memSize, memType, &dstStream);
+    AllocHostAndDevBufs(dstDev, &dstPtr, &dstBuf, memSize, pinned, memType, &dstStream);
 
     ConfigureP2P(ctlDev, srcDev, dstDev, bidirectional, p2p);
 
@@ -319,6 +331,7 @@ int main(int argc, char** argv)
     int verify = 0;
     int repeat = 5;
     unsigned memtype = cudaHostAllocDefault;
+    int pinned = 1;
 
     // Get device count
     int devCount = 0;
@@ -346,7 +359,7 @@ int main(int argc, char** argv)
     int opt, optidx;
     char* strptr;
 
-    while ((opt = getopt_long(argc, argv, "-:hbpiolvmwkr:", opts, &optidx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:pmwsvbor:ilh", opts, &optidx)) != -1)
     {
         switch (opt)
         {
@@ -400,14 +413,6 @@ int main(int argc, char** argv)
                 usePeer2Peer = 1;
                 break;
 
-            case 'v': // verify transfer 
-                verify = 1;
-                break;
-
-            case 'b': // bidirectional benchmark (if p2p is supported+enabled, this will show the difference)
-                bidirectional = 1;
-                break;
-
             case 'p':
                 memtype |= cudaHostAllocPortable;
                 break;
@@ -418,6 +423,18 @@ int main(int argc, char** argv)
 
             case 'w':
                 memtype |= cudaHostAllocWriteCombined;
+                break;
+
+            case 's':
+                pinned = 0;
+                break;
+
+            case 'v': // verify transfer 
+                verify = 1;
+                break;
+
+            case 'b': // bidirectional benchmark (if p2p is supported+enabled, this will show the difference)
+                bidirectional = 1;
                 break;
 
             case 'o': // reverse cudaSetDevice
@@ -476,6 +493,7 @@ int main(int argc, char** argv)
             size, 
             bidirectional, 
             usePeer2Peer,
+            pinned,
             memtype,
             repeat,
             verify
@@ -485,18 +503,19 @@ int main(int argc, char** argv)
 
 giveUsage:
     fprintf(stderr, 
-            "Usage: %s --srcdev=<device no> --dstdev=<device no> --size=<size> [--peer] [options]\n"
+            "Usage: %s --srcdev=<device no> --dstdev=<device no> --size=<size> [--peer] [-pmw|-s] [-vboil] [-r <number>]\n"
             "\nArguments\n"
             "  --srcdev=<device no>  CUDA device to copy data from\n"
             "  --dstdev=<device no>  CUDA device to copy data to\n"
             "  --size=<size>         memory chunk size in MB (or MiB if -i is set)\n"
-            "  --peer                enable p2p is possible\n"
+            "  --peer                enable p2p if possible\n"
             "\nOptions\n"
-            "   -v                   verify transfer by copying memory from device and comparing\n"
-            "   -b                   transfer memory in both directions simultaneously\n"
             "   -p                   use cudaHostAllocPortable flag\n"
             "   -m                   use cudaHostAllocMapped flag\n"
             "   -w                   use cudaHostAllocWriteCombined flag\n"
+            "   -s                   use pagable system memory (malloc)\n"
+            "   -v                   verify transfer by copying memory from device and comparing\n"
+            "   -b                   transfer memory in both directions simultaneously\n"
             "   -o                   make cudaSetDevice set opposite device (pull instead of push)\n"
             "   -r <number>          number of times to repeat (default is 5)\n"
             "   -i                   use IEC units (1024) instead of SI units (1000)\n"
