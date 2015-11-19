@@ -1,5 +1,5 @@
-PROJECT := local-p2p-memcpy
-OBJECTS	:= local-p2p-memcpy.o
+PROJECT := lgpu2lgpu-p2p
+OBJECTS	:= p2pmemcpy.o
 
 CC	:= gcc
 CFLAGS	:= -Wall -Wextra
