@@ -3,19 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
-
-#define cudaCheckError()                                \
-    do {                                                \
-        cudaError_t __err__ = cudaGetLastError();       \
-        if (__err__ != cudaSuccess) {                   \
-            fprintf(stderr, "CUDA error %s:%d: %s\n",  \
-                __FILE__, __LINE__,                     \
-                cudaGetErrorString(__err__));           \
-            exit(1);                                    \
-        }                                               \
-    } while (0)
-
-#define STRINGIFY(s) #s
+#include "shared_cuda.h"
 
 static size_t factor = 1000L;
 

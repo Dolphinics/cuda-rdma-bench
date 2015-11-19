@@ -5,7 +5,8 @@ CC	:= gcc
 CFLAGS	:= -Wall -Wextra
 NVCC 	:= /usr/local/cuda/bin/nvcc
 
-INCLUDE	:= /usr/local/cuda/include
+INCLUDE	:= /usr/local/cuda/include ../shared
+LD_PATH := ../shared
 
 .PHONY: all clean $(PROJECT)
 
@@ -15,7 +16,7 @@ clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
 $(PROJECT): $(OBJECTS)
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ -lshared_cuda
 
 %.o: %.cu
 	$(NVCC) -std=c++11 --compiler-options "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
