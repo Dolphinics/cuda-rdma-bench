@@ -217,11 +217,17 @@ void MeasureLatency(int ctlDev, int srcDev, int dstDev, int pinned, unsigned mem
     cudaFreeHost(dstBuf);
 
     cudaSetDevice(srcDev);
-    cudaFree(srcPtr);
+    if (pinned && !(memType & cudaHostAllocMapped))
+    {
+        cudaFree(srcPtr);
+    }
     cudaStreamDestroy(srcStream);
 
     cudaSetDevice(dstDev);
-    cudaFree(dstPtr);
+    if (pinned && !(memType & cudaHostAllocMapped))
+    {
+        cudaFree(dstPtr);
+    }
     cudaStreamDestroy(dstStream);
 }
 
@@ -317,11 +323,17 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
     cudaFreeHost(dstBuf);
 
     cudaSetDevice(srcDev);
-    cudaFree(srcPtr);
+    if (pinned && !(memType & cudaHostAllocMapped))
+    {
+        cudaFree(srcPtr);
+    }
     cudaStreamDestroy(srcStream);
 
     cudaSetDevice(dstDev);
-    cudaFree(dstPtr);
+    if (pinned && !(memType & cudaHostAllocMapped))
+    {
+        cudaFree(dstPtr);
+    }
     cudaStreamDestroy(dstStream);
 }
 
