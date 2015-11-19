@@ -205,7 +205,7 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
     {
         if (!(memType & cudaHostAllocMapped))
         {
-            cudaSetDevice(srcDev);
+            cudaSetDevice(dstDev);
 
             cudaEvent_t start, stop;
             cudaEventCreate(&start);
@@ -219,7 +219,7 @@ void MeasureBandwidth(int ctlDev, int srcDev, int dstDev, size_t memSize, int bi
             cudaEventRecord(start);
             for (int i = 0; i < repeat; ++i)
             {
-                cudaMemcpyAsync(dstBuf, srcPtr, memSize, cudaMemcpyDeviceToHost);
+                cudaMemcpyAsync(dstBuf, dstPtr, memSize, cudaMemcpyDeviceToHost);
             }
             cudaEventRecord(stop);
 
