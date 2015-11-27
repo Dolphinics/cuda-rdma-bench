@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+
 #define cudaAssert(status)                          \
     do                                              \
     {                                               \
@@ -37,12 +39,23 @@
     while (0)
 
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void EnableP2P(int dev, int peer_dev);
 
 void DisableP2P(int dev, int peer_dev);
 
-void* GetDevicePtr(const void* ptr);
+void* GetGpuDevicePtr(const void* ptr);
 
-void SetSyncMemops(void* dev_ptr);
+int SetSyncMemops(void* gpu_ptr);
+
+int GetGpuCount();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

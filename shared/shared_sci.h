@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+
 #define sciAssert(status)                           \
     do                                              \
     {                                               \
@@ -21,6 +23,12 @@
     }                                               \
     while (0)
 
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 const char* sciGetErrorString(sci_error_t error);
 
 uint64_t GetPhysAddr(sci_local_segment_t segment);
@@ -28,5 +36,11 @@ uint64_t GetPhysAddr(sci_local_segment_t segment);
 uint64_t GetLocalIOAddr(sci_local_segment_t segment);
 
 uint64_t GetRemoteIOAddr(sci_remote_segment_t segment);
+
+unsigned GetLocalNodeID(unsigned local_adapter);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

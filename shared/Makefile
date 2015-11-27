@@ -27,4 +27,4 @@ libshsci.a: shsci.o
 	$(NVCC) -x cu -Xcompiler "-fPIC $(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
 
 %.o: %.c
-	$(CC) -x c -std=gnu99 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(CC) -x c -std=c99 -fPIC $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
