@@ -4,19 +4,11 @@
 extern "C" {
 #endif
 
-
 #include <sisci_api.h>
 #include <stdarg.h>
 #include <stdio.h>
 
-
-const char* SCIGetErrorString(sci_error_t error);
-
-
-
-void set_verbosity(int level);
-
-//void set_logfile(FILE* file);
+extern unsigned verbosity;
 
 void log_info(const char* format, ...);
 
@@ -26,6 +18,7 @@ void log_error(const char* format, ...);
 
 void log_debug(const char* format, ...);
 
+const char* SCIGetErrorString(sci_error_t error);
 
 #ifdef __cplusplus
 }

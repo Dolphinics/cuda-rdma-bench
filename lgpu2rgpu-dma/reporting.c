@@ -16,7 +16,7 @@
  * 2 = warnings, errors and informatives
  * 3 = everything above + debug
  */
-static int verbosity_level = 0;
+unsigned verbosity = 0;
 
 
 
@@ -144,35 +144,18 @@ const char* SCIGetErrorString(sci_error_t code)
 
 
 
-/* Set the verbosity level */
-void set_verbosity(int level)
-{
-    if (level < 0)
-    {
-        level = 0;
-    }
-    else if (level > 3)
-    {
-        level = 3;
-    }
-
-    verbosity_level = level;
-}
-
-
-
 void log_info(const char* frmt, ...)
 {
-    va_list args;
-    char buff[BUFLEN];
-    size_t size;
-
-    va_start(args, frmt);
-    size = vsnprintf(buff, sizeof(buff), frmt, args);
-    va_end(args);
-
-    if (verbosity_level >= 2)
+    if (verbosity >= 2)
     {
+        va_list args;
+        char buff[BUFLEN];
+        size_t size;
+
+        va_start(args, frmt);
+        size = vsnprintf(buff, sizeof(buff), frmt, args);
+        va_end(args);
+
         fwrite("INFO   : ", 9, 1, stderr);
         fwrite(buff, size, 1, stderr);
         fwrite("\n", 1, 1, stderr);
@@ -184,16 +167,16 @@ void log_info(const char* frmt, ...)
 
 void log_warn(const char* frmt, ...)
 {
-    va_list args;
-    char buff[BUFLEN];
-    size_t size;
-
-    va_start(args, frmt);
-    size = vsnprintf(buff, sizeof(buff), frmt, args);
-    va_end(args);
-
-    if (verbosity_level >= 1)
+    if (verbosity >= 1)
     {
+        va_list args;
+        char buff[BUFLEN];
+        size_t size;
+
+        va_start(args, frmt);
+        size = vsnprintf(buff, sizeof(buff), frmt, args);
+        va_end(args);
+
         fwrite("WARNING: ", 9, 1, stderr);
         fwrite(buff, size, 1, stderr);
         fwrite("\n", 1, 1, stderr);
@@ -223,19 +206,20 @@ void log_error(const char* frmt, ...)
 
 void log_debug(const char* frmt, ...)
 {
-    va_list args;
-    char buff[BUFLEN];
-    size_t size;
-
-    va_start(args, frmt);
-    size = vsnprintf(buff, sizeof(buff), frmt, args);
-    va_end(args);
-
-    if (verbosity_level >= 3)
+    if (verbosity >= 3)
     {
+        va_list args;
+        char buff[BUFLEN];
+        size_t size;
+
+        va_start(args, frmt);
+        size = vsnprintf(buff, sizeof(buff), frmt, args);
+        va_end(args);
+
         fwrite("DEBUG  : ", 9, 1, stderr);
         fwrite(buff, size, 1, stderr);
         fwrite("\n", 1, 1, stderr);
         fflush(stderr);
     }
+
 }

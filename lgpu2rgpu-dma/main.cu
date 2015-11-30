@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <time.h>
 extern "C" {
+#include "local.h"
 #include "reporting.h"
 #include "common.h"
 }
@@ -15,7 +16,8 @@ extern "C" {
 
 
 /* Program parameters */
-static unsigned dma_flags = 0;
+static int dma_global = 0;
+static int dma_pull = 0;
 static dma_mode_t dma_mode = DMA_TRANSFER_ONE_WAY;
 static size_t size_factor = 1e6;
 static size_t size_count = 0;
@@ -26,9 +28,7 @@ static unsigned local_node_id = NO_NODE_ID;
 static unsigned adapter_no = 0;
 static int gpu_device_count = 0;
 static int gpu_device_id = NO_ID;
-static unsigned repeat = DEFAULT_REPEAT;
-static unsigned mem_flags = 0;
-static int verbosity = 0;
+static int repeat = DEFAULT_REPEAT;
 
 
 
@@ -48,20 +48,17 @@ static struct option options[] = {
 
 
 
-/* Should the server keep running? */
-static int keep_running = 1;
-
-
-
+/* Signal handler to stop the benchmarking server */
 static void stop_program()
 {
     log_info("Stopping server...");
-    keep_running = 0;
+    stop_server();
 }
 
 
 
-
+/* Get current timestamp in microseconds */
+extern "C"
 uint64_t current_usecs()
 {
     struct timespec ts;
@@ -120,7 +117,7 @@ static void parse_args(int argc, char** argv)
     int opt, idx;
     char* str;
 
-    while ((opt = getopt_long(argc, argv, "-:ha:igr:pmwv", options, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:ha:igr:v", options, &idx)) != -1)
     {
         switch (opt)
         {
@@ -152,11 +149,11 @@ static void parse_args(int argc, char** argv)
                 break;
 
             case 'g': // do global DMA transfer
-                dma_flags |= SCI_FLAG_DMA_GLOBAL;
+                dma_global = 1;
                 break;
 
             case 7: // pull data instead of pushing it
-                dma_flags |= SCI_FLAG_DMA_READ;
+                dma_pull = 1;
                 break;
 
             case 8: // set transfer mode
@@ -165,26 +162,12 @@ static void parse_args(int argc, char** argv)
 
             case 'r': // set number of times to repeat for benchmarking granularity
                 str = NULL;
-                repeat = strtoul(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || repeat == 0)
+                repeat = strtol(optarg, &str, 10);
+                if (str == NULL || *str != '\0' || repeat <= 0)
                 {
-                    log_error("Option -r must be atleast 1");
+                    log_error("Option -r must be at least 1");
                     exit('r');
                 }
-                break;
-
-            case 'p':
-                mem_flags |= cudaHostAllocMapped;
-                mem_flags |= cudaHostAllocPortable;
-                break;
-
-            case 'm':
-                mem_flags |= cudaHostAllocMapped;
-                break;
-
-            case 'w':
-                mem_flags |= cudaHostAllocMapped;
-                mem_flags |= cudaHostAllocWriteCombined;
                 break;
 
             case 2: // set local segment ID
@@ -238,7 +221,7 @@ static void parse_args(int argc, char** argv)
                 break;
 
             case 'v': // increase verbosity level
-                set_verbosity(++verbosity);
+                ++verbosity;
                 break;
         }
     }
@@ -303,7 +286,7 @@ static void parse_args(int argc, char** argv)
             log_warn("Argument --both-ways have no effect in server mode");
         }
 
-        if (!!(dma_flags & SCI_FLAG_DMA_GLOBAL))
+        if (!!(dma_global))
         {
             log_warn("Option -g has no effect in server mode");
         }
@@ -313,8 +296,8 @@ static void parse_args(int argc, char** argv)
 
 give_usage:
     fprintf(stderr, 
-            "Usage: %s --gpu=<gpu id> --size=<size> [-i] [-pmw] [-a <adapter no>] [--local-id=<number>]\n"
-            "   or: %s --gpu=<gpu id> [-pmw] --remote-node=<node id> [-a <adapter no>] [--remote-id=<number>] [--pull] [-g] [--both-ways]\n"
+            "Usage: %s --gpu=<gpu id> --size=<size> [-i] [-a <adapter no>] [--local-id=<number>]\n"
+            "   or: %s --gpu=<gpu id> --remote-node=<node id> [-a <adapter no>] [--remote-id=<number>] [--pull] [-g] [--both-ways]\n"
             "   or: %s --info\n"
             "\nDescription\n"
             "    Copy memory from a local NVIDIA GPU to a remote NVIDIA GPU across a NTB link.\n"
@@ -329,9 +312,6 @@ give_usage:
             "  --info                   list GPUs and NTB adapters and quit\n"
             "\nOptions\n"
             "   -i                      use IEC units (1024) instead of SI units (1000)\n"
-            "   -p                      use cudaHostAllocPortable flag (sets -m implicitly)\n"
-            "   -m                      use cudaHostAllocMapped flag\n"
-            "   -w                      use cudaHostAllocWriteCombined flag (sets -m implicitly)\n"
             "   -a <adapter no>         local NTB adapter number (defaults to 0)\n"
             "   -g                      do global DMA transfer\n"
             "   -r <number>             number of times to repeat (default is %d)\n"
@@ -343,10 +323,66 @@ give_usage:
 
 
 
+/* Run benchmarking client */
+void client(sci_desc_t sd)
+{
+    sci_error_t err;
+    sci_remote_segment_t remote_segment;
+
+    // Connect to remote segment
+    log_debug("Trying to connect to remote segment %u on remote node %u", remote_segment_id, remote_node_id);
+    do
+    {
+        SCIConnectSegment(sd, &remote_segment, remote_node_id, remote_segment_id, adapter_no, NULL, NULL, SCI_INFINITE_TIMEOUT, 0, &err);
+    }
+    while (err != SCI_ERR_OK);
+
+    // Retrieve segment size
+    size_t remote_segment_size = SCIGetRemoteSegmentSize(remote_segment);
+    log_info("Connected to segment %u (%.2f) on remote node %u", 
+            remote_segment_id, remote_segment_size / (double) size_factor, remote_node_id);
+
+    // Create local GPU buffer
+    void* buf = make_gpu_buffer(gpu_device_id, remote_segment_size);
+    uint8_t val = rand() & 255;
+    gpu_memset(gpu_device_id, buf, remote_segment_size, val);
+
+    sci_local_segment_t local_segment = make_local_segment(sd, adapter_no, local_segment_id, buf, remote_segment_size);
+
+    // Connect to remote interrupt
+    sci_remote_interrupt_t trigger_validation_irq;
+    SCIConnectInterrupt(sd, &trigger_validation_irq, remote_node_id, adapter_no, remote_segment_id, SCI_INFINITE_TIMEOUT, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to connect to remote interrupt: %s", SCIGetErrorString(err));
+        exit(1);
+    }
+
+    // Do benchmarks
+    unsigned dma_flags = 0;
+    dma_flags |= dma_pull ? SCI_FLAG_DMA_READ : 0;
+    dma_flags |= dma_global ? SCI_FLAG_DMA_GLOBAL : 0;
+    
+    log_info("Starting benchmark...");
+    uint64_t usecs = benchmark(sd, adapter_no, local_segment, remote_segment, remote_segment_size, dma_mode, dma_flags, repeat);
+    double megabytes_per_second = remote_segment_size / (double) usecs / (double) repeat;
+    fprintf(stdout, "%5.3f\n", megabytes_per_second);
+    
+
+    // Clean up
+    SCIDisconnectInterrupt(trigger_validation_irq, 0, &err);
+    do
+    {
+        SCIDisconnectSegment(remote_segment, 0, &err);
+    }
+    while (err == SCI_ERR_BUSY);
+    free_gpu_buffer(gpu_device_id, buf);
+}
+
+
+
 int main(int argc, char** argv)
 {
-    set_verbosity(verbosity);
-
     // Get number of GPUs
     cudaError_t cu_err = cudaGetDeviceCount(&gpu_device_count);
 
@@ -387,35 +423,11 @@ int main(int argc, char** argv)
         //        but seems to be the only semi-portable way...
         signal(SIGINT, (sig_t) &stop_program);
 
-        server_args args = {
-            .desc = sci_desc,
-            .adapter_id = adapter_no,
-            .segment_id = local_segment_id,
-            .segment_size = size_count * size_factor,
-            .gpu_dev_id = gpu_device_id,
-            .gpu_mem_flags = mem_flags,
-            .dma_mode = dma_mode,
-            .dma_flags = dma_flags,
-            .keep_running = &keep_running
-        };
-
-        run_server(&args);
+        server(sci_desc, adapter_no, gpu_device_id, local_segment_id, size_factor * size_count);
     }
     else
     {
-        client_args args = {
-            .desc = sci_desc,
-            .adapter_id = adapter_no,
-            .remote_node_id = remote_node_id,
-            .remote_segment_id = remote_segment_id,
-            .local_segment_id = local_segment_id,
-            .gpu_dev_id = gpu_device_id,
-            .gpu_mem_flags = mem_flags,
-            .dma_mode = dma_mode,
-            .dma_flags = dma_flags,
-        };
-
-        run_client(&args, size_factor, repeat);
+        client(sci_desc);
     }
 
     SCIClose(sci_desc, 0, &sci_err);

@@ -4,10 +4,12 @@
 extern "C" {
 #endif
 
+
 #include <stdlib.h>
 #include <sisci_api.h>
 #include <limits.h>
 #include <stdint.h>
+
 
 
 /* Some useful defines */
@@ -18,44 +20,39 @@ extern "C" {
 #define DEFAULT_REPEAT  5
 
 
-/* Different DMA modes */
+
+/* Different DMA transfer modes */
 typedef enum {
     DMA_TRANSFER_ONE_WAY,   // Client only transfers data
     DMA_TRANSFER_TWO_WAY,   // Client and server both transfer data data
 } dma_mode_t;
 
-/* Arguments to the server */
-typedef struct {
-    sci_desc_t  desc;
-    unsigned    adapter_id;
-    unsigned    segment_id;
-    size_t      segment_size;
-    int         gpu_dev_id;
-    unsigned    gpu_mem_flags;
-    int         dma_mode;
-    unsigned    dma_flags;
-    const int*  keep_running;
-} server_args;
-
-/* Arguments to the client */
-typedef struct {
-    sci_desc_t  desc;
-    unsigned    adapter_id;
-    unsigned    remote_node_id;
-    unsigned    remote_segment_id;
-    unsigned    local_segment_id;
-    int         gpu_dev_id;
-    unsigned    gpu_mem_flags;
-    dma_mode_t  dma_mode;
-    unsigned    dma_flags;
-} client_args;
 
 
-void run_server(server_args* arguments);
+/* Run benchmarking server 
+ * Doesn't return unless stop_benchmark_server() is called
+ */
+void server(sci_desc_t sd, unsigned adapter_no, int gpu_id, unsigned segment_id, size_t segment_size);
 
-void run_client(client_args* arguments, size_t factor, unsigned repeat);
 
+
+/* Stop the server */
+void stop_server();
+
+
+
+/* Do the benchmark */
+uint64_t benchmark(
+        sci_desc_t sd, unsigned adapter_no, 
+        sci_local_segment_t local, sci_remote_segment_t remote, size_t size, 
+        dma_mode_t mode, unsigned flags, int repeat
+        );
+
+
+
+/* Get current timestamp in microseconds */
 uint64_t current_usecs();
+
 
 #ifdef __cplusplus
 }

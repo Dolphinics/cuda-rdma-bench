@@ -7,78 +7,107 @@
 
 
 
-sci_callback_action_t dma_transfer(void* buff_info, sci_local_data_interrupt_t irq, void* client_data, unsigned length, sci_error_t status)
+/* Buffer information */
+struct bufinfo
 {
-    
+    int     gpu;
+    void*   ptr;
+    size_t  len;
+};
+
+
+
+/* Indicate whether or not the server should keep running */
+static int keep_running = 1;
+
+
+
+/* Stop the server */
+void stop_server()
+{
+    keep_running = 0;
+}
+
+
+
+/* Interrupt handler 
+ * Trigger a buffer validation
+ */
+sci_callback_action_t trigger_validate_buffer(void* buf_info, sci_local_interrupt_t irq, sci_error_t status)
+{
+    struct bufinfo* info = (struct bufinfo*) buf_info;
+
+    // TODO: do validate_buffer here
+
     return SCI_CALLBACK_CONTINUE;
 }
 
 
 
-sci_callback_action_t print_buffer_byte(void* buff_info, sci_local_interrupt_t irq, sci_error_t status)
-{
-    bufhandle_t* bh = (bufhandle_t*) buff_info;
-
-    uint8_t byte_value = validate_buffer(*bh);
-
-    log_debug("Buffer byte (trigger): %02x", byte_value);
-
-    return SCI_CALLBACK_CONTINUE;
-}
-
-
-
-void run_server(server_args* args)
+void server(sci_desc_t sd, unsigned adapter, int gpu, unsigned id, size_t size)
 {
     sci_error_t err;
 
-    bufhandle_t bh;
-    bh = create_gpu_buffer(args->desc, args->adapter_id, args->gpu_dev_id, args->segment_id, args->segment_size, args->gpu_mem_flags);
+    // Make GPU buffer and fill all bytes with a random value
+    void* buf = make_gpu_buffer(gpu, size);
+    uint8_t val = rand() & 255;
+    gpu_memset(gpu, buf, size, val);
 
-    log_debug("Buffer byte (initial): %02x\n", validate_buffer(bh));
+    // Make local segment
+    sci_local_segment_t segment = make_local_segment(sd, adapter, id, buf, size);
 
-    sci_local_data_interrupt_t data_irq;
-    unsigned data_irq_no = args->segment_id;
+    // Trigger buffer validation on interrupt
+    sci_local_interrupt_t validate_irq;
+    unsigned validate_irq_no = id;
 
-    SCICreateDataInterrupt(args->desc, &data_irq, args->adapter_id, &data_irq_no, &dma_transfer, &bh, SCI_FLAG_FIXED_INTNO | SCI_FLAG_USE_CALLBACK, &err);
+    struct bufinfo info = {
+        .gpu = gpu, .ptr = buf, .len = size
+    };
+
+    SCICreateInterrupt(sd, &validate_irq, adapter, &validate_irq_no, &trigger_validate_buffer, &info, SCI_FLAG_FIXED_INTNO | SCI_FLAG_USE_CALLBACK, &err);
     if (err != SCI_ERR_OK)
     {
-        log_error("Failed to create data interrupt: %s", SCIGetErrorString(err));
+        log_error("Failed to create buffer validation trigger: %s", SCIGetErrorString(err));
         exit(1);
     }
 
-    sci_local_interrupt_t trigger_irq;
-    unsigned trigger_irq_no = args->segment_id;
-    
-    SCICreateInterrupt(args->desc, &trigger_irq, args->adapter_id, &trigger_irq_no, &print_buffer_byte, &bh, SCI_FLAG_FIXED_INTNO | SCI_FLAG_USE_CALLBACK, &err);
+    // Create data interrupt for message passing
+    sci_local_data_interrupt_t msg_irq;
+    unsigned msg_irq_no = id;
+
+    // TODO: Create data interrupt
+
+    // Set segment available so we're good to go
+    SCISetSegmentAvailable(segment, adapter, 0, &err);
     if (err != SCI_ERR_OK)
     {
-        log_error("Failed to create interrupt: %s", SCIGetErrorString(err));
+        log_error("Failed to set segment available: %s", SCIGetErrorString(err));
         exit(1);
     }
 
-    SCISetSegmentAvailable(bh.segment, args->adapter_id, 0, &err);
+    // Keep running until SIGINT is raised
+    while (keep_running);
+
+    // Make segment unavailable to prevent more connections
+    SCISetSegmentUnavailable(segment, adapter, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
     if (err != SCI_ERR_OK)
     {
-        log_error("Couldn't export segment: %s", SCIGetErrorString(err));
-        exit(1);
+        log_error("Failed to set segment unavailable, but continuing: %s", SCIGetErrorString(err));
     }
 
-    while (*args->keep_running);
-
-    SCISetSegmentUnavailable(bh.segment, args->adapter_id, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
-
+    // Remove interrupts
+    // TODO: remove data interrupt
     do
     {
-        SCIRemoveDataInterrupt(data_irq, 0, &err);
+        SCIRemoveInterrupt(validate_irq, 0, &err);
     }
     while (err == SCI_ERR_BUSY);
 
-    do
+    SCIRemoveSegment(segment, 0, &err);
+    if (err != SCI_ERR_OK)
     {
-        SCIRemoveInterrupt(trigger_irq, 0, &err);
+        log_error("Failed to remove segment, but continuing");
     }
-    while (err == SCI_ERR_BUSY);
 
-    free_gpu_buffer(bh);
+    free_gpu_buffer(gpu, buf);
 }
