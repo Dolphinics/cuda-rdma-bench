@@ -99,12 +99,12 @@ double DMAPull(sci_desc_t sciDev, uint32_t adapt, local_t local, size_t loff, re
 
     for (int i = 0; i < repeat; ++i)
     {
-        //SCIStartDmaTransfer(queue, local.segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags | SCI_FLAG_DMA_READ, &err);
+        SCIStartDmaTransfer(queue, local.segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags | SCI_FLAG_DMA_READ, &err);
        
         //SCIStartDmaTransfer(queue, segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags | SCI_FLAG_DMA_READ, &err);
         
         
-        SCIStartDmaTransfer(queue, local.segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags, &err);
+        //SCIStartDmaTransfer(queue, local.segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags, &err);
 
        //SCIStartDmaTransfer(queue, segment, remote.segment, loff, local.length - loff, roff, NULL, NULL, flags, &err);
        //
@@ -115,7 +115,6 @@ double DMAPull(sci_desc_t sciDev, uint32_t adapt, local_t local, size_t loff, re
         SCIWaitForDMAQueue(queue, SCI_INFINITE_TIMEOUT, 0, &err);
         sciAssert(err);
 
-        break; // XXX
     }
 
     fprintf(stdout, " DONE\n");

@@ -1,11 +1,11 @@
 PROJECT := $(notdir $(shell pwd))
-OBJECTS	:= main.o local.o remote.o dma.o
+OBJECTS	:= main.o reporting.o local.o client.o server.o
 
-CC		:= gcc
+CC	:= gcc
 NVCC 	:= /usr/local/cuda/bin/nvcc
-CFLAGS	:= -Wall -Wextra
+CFLAGS	:= -Wall -Wextra -D_REENTRANT
 
-INCLUDE	:= /usr/local/cuda/include /opt/DIS/include /opt/DIS/include/dis ../shared
+INCLUDE	:= /usr/local/cuda/include /opt/DIS/include /opt/DIS/include/dis
 
 .PHONY: all clean $(PROJECT)
 
@@ -14,11 +14,11 @@ all: $(PROJECT)
 clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
-$(PROJECT): $(OBJECTS) ../shared/shsci.o ../shared/shcuda.o
+$(PROJECT): $(OBJECTS)
 	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lcuda -lrt
 
 %.o: %.c
-	$(CC) -x c -std=gnu99 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(CC) -x c -std=gnu99 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c 
 
 %.o: %.cu
-	$(NVCC) -x cu -Xcompiler "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c
+	$(NVCC) -x cu -Xcompiler "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c 

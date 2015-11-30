@@ -1,103 +1,224 @@
 #include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
+#include <sisci_api.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "shared_cuda.h"
-#include "shared_sci.h"
+#include <time.h>
+extern "C" {
+#include "common.h"
 #include "local.h"
-
-__global__ void MakeGPUSetNodeID(uint8_t* memPtr, uint32_t nodeId)
-{
-    *((uint32_t*) memPtr) = nodeId;
+#include "reporting.h"
 }
 
+
+
+__global__ void gpu_memset(void* buffer, size_t size, uint8_t value)
+{
+    const int num = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    const int pos = y * (gridDim.x * blockDim.x) + x;
+
+    uint8_t* ptr = (uint8_t*) buffer;
+
+    for (size_t i = pos * (size / num), n = (pos + 1) * (size / num); i < n && i < size; ++i)
+    {
+        ptr[i] = value;
+    }
+}
+
+
+
 static __host__
-sci_local_segment_t CreateSegment(uint32_t id, sci_desc_t sd, uint32_t adapter, void* ptr, size_t size)
+void* get_dev_ptr(void* ptr)
+{
+    cudaPointerAttributes attrs;
+    
+    cudaError_t status = cudaPointerGetAttributes(&attrs, ptr);
+    if (status != cudaSuccess)
+    {
+        log_error("Unexpected error: %s", cudaGetErrorString(status));
+        exit(1);
+    }
+
+    unsigned flag = 1;
+    CUresult result = cuPointerSetAttribute(&flag, CU_POINTER_ATTRIBUTE_SYNC_MEMOPS, (CUdeviceptr) attrs.devicePointer);
+    if (result != CUDA_SUCCESS)
+    {
+        log_error("Unexpected error when setting pointer attribute");
+        exit(1);
+    }
+
+    return attrs.devicePointer;
+}
+
+
+
+static sci_callback_action_t notify_connection(void* arg, sci_local_segment_t segment, sci_segment_cb_reason_t reason, unsigned remote_node, unsigned adapter, sci_error_t status)
+{
+    if (reason == SCI_CB_CONNECT)
+    {
+        log_info("Got connection from remote cluster node %u on NTB adapter %u", remote_node, adapter);
+    }
+
+    return SCI_CALLBACK_CONTINUE;
+}
+
+
+
+static __host__
+sci_local_segment_t create_segment(unsigned id, sci_desc_t sd, unsigned adapter, void* ptr, size_t size)
 {
     sci_error_t err;
     sci_local_segment_t segment;
 
-    SCICreateSegment(sd, &segment, id, size, NULL, NULL, SCI_FLAG_EMPTY, &err);
-    sciAssert(err);
+    SCICreateSegment(sd, &segment, id, size, &notify_connection, NULL, SCI_FLAG_USE_CALLBACK | SCI_FLAG_EMPTY, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Couldn't create segment: %s", SCIGetErrorString(err));
+        exit(1);
+    }
 
-    void* devPtr = GetGpuDevicePtr(ptr);
-    SetSyncMemops(devPtr);
-    // FIXME: Error handling
-
-    SCIAttachPhysicalMemory(0, devPtr, 0, size, segment, SCI_FLAG_CUDA_BUFFER, &err);
-    sciAssert(err);
+    void* dev_ptr = get_dev_ptr(ptr);
+    
+    SCIAttachPhysicalMemory(0, dev_ptr, 0, size, segment, SCI_FLAG_CUDA_BUFFER, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Couldn't attach physical memory: %s", SCIGetErrorString(err));
+        exit(1);
+    }
 
     SCIPrepareSegment(segment, adapter, 0, &err);
-    sciAssert(err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Couldn't prepare segment: %s", SCIGetErrorString(err));
+        exit(1);
+    }
 
     return segment;
 }
 
+
+
 extern "C"
-local_t CreateLocalSegment(sci_desc_t sciDesc, uint32_t localNodeId, uint32_t adapterNo, int gpuId, size_t memSize)
+bufhandle_t create_gpu_buffer(sci_desc_t desc, unsigned adapter, int gpu, unsigned id, size_t size, unsigned flags)
 {
     cudaError_t err;
+    bufhandle_t handle;
 
-    fprintf(stdout, "Local GPU: %d\n", gpuId);
+    err = cudaSetDevice(gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Couldn't set GPU: %s", cudaGetErrorString(err));
+        exit(1);
+    }
+    handle.gpu_id = gpu;
 
-    // Allocate device memory
-    err = cudaSetDevice(gpuId);
-    cudaAssert(err);
+    log_debug("Allocating buffer on GPU %d (%lu bytes)", gpu, size);
+    if (!!(flags & cudaHostAllocMapped))
+    {
+        handle.hostmem = 1;
+        err = cudaHostAlloc(&handle.buffer, size, flags);
+    }
+    else
+    {
+        handle.hostmem = 0;
+        err = cudaMalloc(&handle.buffer, size);
+    }
+    if (err != cudaSuccess)
+    {
+        log_error("Couldn't allocate memory on GPU: %s\n", cudaGetErrorString(err));
+        exit(1);
+    }
 
-    uint8_t* memPtr;
-    err = cudaMalloc(&memPtr, memSize);
-    cudaAssert(err);
+    handle.size = size;
+    handle.segment = create_segment(id, desc, adapter, handle.buffer, size);
 
-    // Create local segment
-    const uint32_t segmentId = (localNodeId << 24);
-    sci_local_segment_t segment = CreateSegment(segmentId, sciDesc, adapterNo, memPtr, memSize);
+    uint8_t value = rand() & 255;
 
-    uint32_t value = rand() & 255;
-    printf("****** MY VALUE = %u *********\n", value);
-    MakeGPUSetNodeID<<<1, 1>>>(memPtr, value);
+    dim3 grid;
+    grid.x = 4;
+    grid.y = 4;
 
-    err = cudaDeviceSynchronize();
-    cudaAssert(err);
+    dim3 block;
+    block.x = 4;
+    block.y = 4;
 
-    // Make descriptor type and return
-    local_t descriptor;
-    descriptor.segment = segment;
-    descriptor.buffer = memPtr;
-    descriptor.length = memSize;
-    descriptor.device = gpuId;
-    return descriptor;
+    log_debug("Filling buffer with value %02x", value);
+    gpu_memset<<<grid, block>>>(handle.buffer, size, value);
+
+    cudaDeviceSynchronize();
+
+    return handle;
 }
 
+
+
 extern "C"
-void FreeLocalSegment(local_t h, uint32_t adapter)
+void free_gpu_buffer(bufhandle_t handle)
 {
     sci_error_t err;
-    
-    SCISetSegmentUnavailable(h.segment, adapter, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
 
     do
     {
-        SCIRemoveSegment(h.segment, 0, &err);
+        SCIRemoveSegment(handle.segment, 0, &err);
     }
-    while (SCI_ERR_OK != err);
+    while (err != SCI_ERR_OK);
 
-    cudaSetDevice(h.device);
-    cudaFree(h.buffer);
+    cudaSetDevice(handle.gpu_id);
+    if (handle.hostmem)
+    {
+        cudaFreeHost(handle.buffer);
+    }
+    else
+    {
+        cudaFree(handle.buffer);
+    }
 }
 
+
+
 extern "C"
-void DumpGPUMemory(local_t h)
+uint8_t validate_buffer(bufhandle_t handle)
 {
-    uint8_t* buf;
-    cudaHostAlloc(&buf, h.length, cudaHostAllocDefault);
-    cudaCheckError();
+    // TODO: Calculate actual checksum of higher and lower part of buffer
 
-    cudaSetDevice(h.device);
-    cudaCheckError();
+    uint8_t* ptr = (uint8_t*) handle.buffer;
 
-    cudaMemcpy(buf, h.buffer, h.length, cudaMemcpyDeviceToHost);
-    cudaCheckError();
+    if (!handle.hostmem)
+    {
+        cudaError_t err;
 
-    fprintf(stdout, "%u\n", *((unsigned*) buf));
+        err = cudaHostAlloc(&ptr, handle.size, cudaHostAllocDefault);
+        if (err != cudaSuccess)
+        {
+            log_error("Failed to allocate host buffer: %s", cudaGetErrorString(err));
+            exit(1);
+        }
 
-    cudaFreeHost(buf);
+        err = cudaMemcpy(ptr, handle.buffer, handle.size, cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess)
+        {
+            log_error("Failed to copy from device memory to host memory");
+            exit(1);
+        }
+    }
+
+    uint8_t value = ptr[0];
+    for (size_t i = 1; i < handle.size; ++i)
+    {
+        if (ptr[i] != value)
+        {
+            log_error("Buffer is garbled");
+            break;
+        }
+    }
+
+    if (!handle.hostmem)
+    {
+        cudaFreeHost(ptr);
+    }
+
+    return value;
 }

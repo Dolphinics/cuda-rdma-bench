@@ -1,30 +1,27 @@
 #ifndef __LOCAL_H__
 #define __LOCAL_H__
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <sisci_api.h>
-#include <stdlib.h>
 #include <stdint.h>
+#include <sisci_api.h>
 
 typedef struct {
     sci_local_segment_t segment;
     void*               buffer;
-    size_t              length;
-    int                 device;
-} local_t;
+    size_t              size;
+    int                 hostmem;
+    int                 gpu_id;
+} bufhandle_t;
+
+bufhandle_t create_gpu_buffer(sci_desc_t desc, unsigned adapter_id, int gpu_id, unsigned segment_id, size_t mem_size, unsigned mem_flags);
+
+void free_gpu_buffer(bufhandle_t buffer_handle);
+
+uint8_t validate_buffer(bufhandle_t buffer_handle);
 
 #ifdef __cplusplus
-extern "C"
+}
 #endif
-local_t CreateLocalSegment(sci_desc_t sciDesc, uint32_t localNodeId, uint32_t adapterNo, int gpuId, size_t memSize);
-
-#ifdef __cplusplus
-extern "C"
-#endif
-void FreeLocalSegment(local_t handle, uint32_t adapter);
-
-#ifdef __cplusplus
-extern "C"
-#endif
-void DumpGPUMemory(local_t handle);
-
 #endif

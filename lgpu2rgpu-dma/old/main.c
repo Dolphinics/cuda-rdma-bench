@@ -208,16 +208,17 @@ int main(int argc, char** argv)
         }
         else
         {
-            //double push, pull;
-
             if (!!(mode & 1))
             {
-                //push = DMAPush(desc, adapter, local, loff, remote, roff, 3);
+                double push;
+                push = DMAPush(desc, adapter, local, loff, remote, roff, 3);
             }
 
             if (!!(mode & 2))
             {
-                /*pull =*/ DMAPull(desc, adapter, local, loff, remote, roff, 3);
+                double pull;
+                pull = DMAPull(desc, adapter, local, loff, remote, roff, 15);
+                fprintf(stdout, "PULL: %05.3f %s\n", pull, factor == 1e6 ? "MB/s" : "MiB/s");
             }
 
             //fprintf(stdout, "PUSH: %05.3f %s\n", push, factor == 1e6 ? "MB/s" : "MiB/s");
