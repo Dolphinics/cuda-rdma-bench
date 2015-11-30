@@ -59,7 +59,7 @@ static sci_callback_action_t notify_connection(void* arg, sci_local_segment_t se
 {
     if (reason == SCI_CB_CONNECT)
     {
-        log_info("Got connection from remote cluster node %u on NTB adapter %u", remote_node, adapter);
+        log_debug("Got connection from remote cluster node %u on NTB adapter %u", remote_node, adapter);
     }
 
     return SCI_CALLBACK_CONTINUE;
@@ -210,7 +210,7 @@ uint8_t validate_buffer(bufhandle_t handle)
     {
         if (ptr[i] != value)
         {
-            log_error("Buffer is garbled");
+            log_error("Buffer is garbled at position %lu: %02x", i, ptr[i]);
             break;
         }
     }

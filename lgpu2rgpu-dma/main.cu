@@ -40,7 +40,6 @@ static struct option options[] = {
     { .name = "size", .has_arg = 1, .flag = NULL, .val = 5 },
     { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 6 },
     { .name = "both-ways", .has_arg = 0, .flag = NULL, .val = 8 },
-    { .name = "both-ways-separate", .has_arg = 0, .flag = NULL, .val = 9 },
     { .name = "pull", .has_arg = 0, .flag = NULL, .val = 7 },
     { .name = "info", .has_arg = 0, .flag = NULL, .val = 'h' },
     { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
@@ -161,18 +160,6 @@ static void parse_args(int argc, char** argv)
                 break;
 
             case 8: // set transfer mode
-                if (dma_mode != DMA_TRANSFER_DEFAULT)
-                {
-                    log_warn("Argument --both-ways-separate will be ignored");
-                }
-                dma_mode = DMA_TRANSFER_BOTH_WAYS;
-                break;
-
-            case 9: // set transfer mode
-                if (dma_mode != DMA_TRANSFER_DEFAULT)
-                {
-                    log_warn("Argument --both-ways will be ignored");
-                }
                 dma_mode = DMA_TRANSFER_TWO_WAY;
                 break;
 
@@ -311,9 +298,9 @@ static void parse_args(int argc, char** argv)
     {
         log_info("Running in server mode. Connect using node ID %d and segment ID %d", local_node_id, local_segment_id);
 
-        if (dma_mode != DMA_TRANSFER_DEFAULT)
+        if (dma_mode != DMA_TRANSFER_ONE_WAY)
         {
-            log_warn("Arguments --both-ways or --both-ways-separate have no effect in server mode");
+            log_warn("Argument --both-ways have no effect in server mode");
         }
 
         if (!!(dma_flags & SCI_FLAG_DMA_GLOBAL))
@@ -327,7 +314,7 @@ static void parse_args(int argc, char** argv)
 give_usage:
     fprintf(stderr, 
             "Usage: %s --gpu=<gpu id> --size=<size> [-i] [-pmw] [-a <adapter no>] [--local-id=<number>]\n"
-            "   or: %s --gpu=<gpu id> [-pmw] --remote-node=<node id> [-a <adapter no>] [--remote-id=<number>] [--pull] [-g] [--both-ways|--both-ways-separate]\n"
+            "   or: %s --gpu=<gpu id> [-pmw] --remote-node=<node id> [-a <adapter no>] [--remote-id=<number>] [--pull] [-g] [--both-ways]\n"
             "   or: %s --info\n"
             "\nDescription\n"
             "    Copy memory from a local NVIDIA GPU to a remote NVIDIA GPU across a NTB link.\n"
@@ -337,7 +324,8 @@ give_usage:
             "  --remote-node=<node id>  remote cluster node ID\n"
             "  --local-id=<number>      number identifying the local memory segment\n"
             "  --remote-id=<number>     number identifying the memory segment on a remote host\n"
-            "  --pull                   do DMA transfer from remote to local memory (default is local to remote)\n"
+            "  --pull                   pull data from remote hode instead of pushing it\n"
+            "  --both-ways              do DMA transfer in both directions simultaneously\n"
             "  --info                   list GPUs and NTB adapters and quit\n"
             "\nOptions\n"
             "   -i                      use IEC units (1024) instead of SI units (1000)\n"

@@ -21,7 +21,7 @@ sci_callback_action_t print_buffer_byte(void* buff_info, sci_local_interrupt_t i
 
     uint8_t byte_value = validate_buffer(*bh);
 
-    fprintf(stdout, "Buffer byte (trigger): %02x\n", byte_value);
+    log_debug("Buffer byte (trigger): %02x", byte_value);
 
     return SCI_CALLBACK_CONTINUE;
 }
@@ -35,7 +35,7 @@ void run_server(server_args* args)
     bufhandle_t bh;
     bh = create_gpu_buffer(args->desc, args->adapter_id, args->gpu_dev_id, args->segment_id, args->segment_size, args->gpu_mem_flags);
 
-    fprintf(stdout, "Buffer byte (initial): %02x\n", validate_buffer(bh));
+    log_debug("Buffer byte (initial): %02x\n", validate_buffer(bh));
 
     sci_local_data_interrupt_t data_irq;
     unsigned data_irq_no = args->segment_id;

@@ -20,11 +20,9 @@ extern "C" {
 
 /* Different DMA modes */
 typedef enum {
-    DMA_TRANSFER_ONE_WAY,   // Client pushes data
-    DMA_TRANSFER_BOTH_WAYS, // Client pushes data and pulls data simultaneously
-    DMA_TRANSFER_TWO_WAY,   // Client and server both push data
+    DMA_TRANSFER_ONE_WAY,   // Client only transfers data
+    DMA_TRANSFER_TWO_WAY,   // Client and server both transfer data data
 } dma_mode_t;
-#define DMA_TRANSFER_DEFAULT DMA_TRANSFER_ONE_WAY
 
 /* Arguments to the server */
 typedef struct {
