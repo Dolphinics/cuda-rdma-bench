@@ -18,19 +18,25 @@ uint64_t one_way(sci_desc_t sd, unsigned adapter, sci_local_segment_t local, sci
         exit(1);
     }
 
-    uint32_t start, end;
+    dis_dma_vec_t vec[repeat];
 
-    start = current_usecs();
     for (int i = 0; i < repeat; ++i)
     {
-        SCIStartDmaTransfer(q, local, remote, 0, size, 0, NULL, NULL, SCI_FLAG_DMA_WAIT | flags, &err);
-        if (err != SCI_ERR_OK)
-        {
-            log_error("Failed transfer! %s", SCIGetErrorString(err));
-            break;
-        }
+        vec[i].size = size;
+        vec[i].local_offset = 0;
+        vec[i].remote_offset = 0;
+        vec[i].flags = 0;
     }
-    end = current_usecs();
+
+    uint64_t start = current_usecs();
+    SCIStartDmaTransferVec(q, local, remote, repeat, vec, NULL, NULL,  SCI_FLAG_DMA_WAIT | flags, &err);
+    uint64_t end = current_usecs();
+
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed transfer! %s", SCIGetErrorString(err));
+        exit(1);
+    }
     
     SCIRemoveDMAQueue(q, 0, &err);
     if (err != SCI_ERR_OK)
@@ -44,21 +50,27 @@ uint64_t one_way(sci_desc_t sd, unsigned adapter, sci_local_segment_t local, sci
 
 
 uint64_t benchmark(
-        sci_desc_t sd, unsigned adapter, sci_local_segment_t local, sci_remote_segment_t remote, size_t size, 
+        sci_desc_t sd, unsigned remote_node_id, unsigned adapter, 
+        sci_local_segment_t local, sci_remote_segment_t remote, size_t size, 
         dma_mode_t mode, unsigned flags, int repeat)
 {
+    uint64_t usecs = 0;
+
     switch (mode)
     {
         case DMA_TRANSFER_ONE_WAY:
-            return one_way(sd, adapter, local, remote, size, flags, repeat);
+            usecs = one_way(sd, adapter, local, remote, size, flags, repeat);
+            break;
 
         case DMA_TRANSFER_TWO_WAY:
             // TODO: Implement this
-            return 0;
+            log_error("two way transfer not implemented yet");
+            break;
 
         default:
             log_error("Unknown DMA transfer mode");
-            return 0;
+            break;
     }
-    
+
+    return usecs;
 }

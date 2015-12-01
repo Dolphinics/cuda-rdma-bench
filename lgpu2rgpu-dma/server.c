@@ -95,6 +95,8 @@ void server(sci_desc_t sd, unsigned adapter, int gpu, unsigned id, size_t size)
         log_error("Failed to set segment unavailable, but continuing: %s", SCIGetErrorString(err));
     }
 
+    validate_gpu_buffer(gpu, buf, size, 0);
+
     // Remove interrupts
     // TODO: remove data interrupt
     do

@@ -66,7 +66,7 @@ uint64_t current_usecs()
     {
         log_error("Failed to get realtime timestamp");
     }
-    return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+    return ts.tv_sec * 1e6L + ts.tv_nsec / 1e3L;
 }
 
 
@@ -251,6 +251,12 @@ static void parse_args(int argc, char** argv)
         goto give_usage;
     }
 
+    if ((size_count * size_factor) >= MAX_SEGMENT_SIZE)
+    {
+        log_error("Maximum segment size is %lu MiB", MAX_SEGMENT_SIZE / (1 << 20));
+        exit(1);
+    }
+
     if (local_node_id == remote_node_id)
     {
         log_warn("Remote cluster node ID is the same as the local node ID");
@@ -289,6 +295,11 @@ static void parse_args(int argc, char** argv)
         if (!!(dma_global))
         {
             log_warn("Option -g has no effect in server mode");
+        }
+
+        if (repeat != DEFAULT_REPEAT)
+        {
+            log_warn("Option -r has no effect in server mode");
         }
     }
 
@@ -339,8 +350,8 @@ void client(sci_desc_t sd)
 
     // Retrieve segment size
     size_t remote_segment_size = SCIGetRemoteSegmentSize(remote_segment);
-    log_info("Connected to segment %u (%.2f) on remote node %u", 
-            remote_segment_id, remote_segment_size / (double) size_factor, remote_node_id);
+    log_info("Connected to segment %u (%.2f %s) on remote node %u", 
+            remote_segment_id, remote_segment_size / (double) size_factor, size_factor == 1e6 ? "MB" : "MiB", remote_node_id);
 
     // Create local GPU buffer
     void* buf = make_gpu_buffer(gpu_device_id, remote_segment_size);
@@ -349,28 +360,18 @@ void client(sci_desc_t sd)
 
     sci_local_segment_t local_segment = make_local_segment(sd, adapter_no, local_segment_id, buf, remote_segment_size);
 
-    // Connect to remote interrupt
-    sci_remote_interrupt_t trigger_validation_irq;
-    SCIConnectInterrupt(sd, &trigger_validation_irq, remote_node_id, adapter_no, remote_segment_id, SCI_INFINITE_TIMEOUT, 0, &err);
-    if (err != SCI_ERR_OK)
-    {
-        log_error("Failed to connect to remote interrupt: %s", SCIGetErrorString(err));
-        exit(1);
-    }
-
     // Do benchmarks
     unsigned dma_flags = 0;
     dma_flags |= dma_pull ? SCI_FLAG_DMA_READ : 0;
     dma_flags |= dma_global ? SCI_FLAG_DMA_GLOBAL : 0;
     
     log_info("Starting benchmark...");
-    uint64_t usecs = benchmark(sd, adapter_no, local_segment, remote_segment, remote_segment_size, dma_mode, dma_flags, repeat);
-    double megabytes_per_second = remote_segment_size / (double) usecs / (double) repeat;
-    fprintf(stdout, "%5.3f\n", megabytes_per_second);
-    
+    uint64_t usecs = benchmark(sd, remote_node_id, adapter_no, local_segment, remote_segment, remote_segment_size, dma_mode, dma_flags, repeat);
+    double megabytes_per_second = (remote_segment_size * repeat) / (double) usecs;
 
+    fprintf(stdout, "%5.3f %-5s\n", megabytes_per_second, size_factor == 1e6 ? "MB/s" : "MiB/s");
+    
     // Clean up
-    SCIDisconnectInterrupt(trigger_validation_irq, 0, &err);
     do
     {
         SCIDisconnectSegment(remote_segment, 0, &err);

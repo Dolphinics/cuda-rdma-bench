@@ -13,11 +13,12 @@ extern "C" {
 
 
 /* Some useful defines */
-#define MAX_ID          (INT_MAX >> 1)
-#define NO_ID           MAX_ID
-#define MAX_NODE_ID     1024
-#define NO_NODE_ID      MAX_ID
-#define DEFAULT_REPEAT  5
+#define MAX_ID              (INT_MAX >> 1)
+#define NO_ID               MAX_ID
+#define MAX_NODE_ID         1024
+#define NO_NODE_ID          MAX_ID
+#define MAX_SEGMENT_SIZE    (128 << 20) // 128 MiB is maximum DMA vec size
+#define DEFAULT_REPEAT      5
 
 
 
@@ -43,7 +44,7 @@ void stop_server();
 
 /* Do the benchmark */
 uint64_t benchmark(
-        sci_desc_t sd, unsigned adapter_no, 
+        sci_desc_t sd, unsigned remote_node_id, unsigned adapter_no, 
         sci_local_segment_t local, sci_remote_segment_t remote, size_t size, 
         dma_mode_t mode, unsigned flags, int repeat
         );

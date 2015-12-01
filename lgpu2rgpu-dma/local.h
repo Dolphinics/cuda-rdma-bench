@@ -31,18 +31,11 @@ sci_local_segment_t make_local_segment(sci_desc_t desc, unsigned adapt_no, unsig
 
 
 
-/* Do a memcpy from the GPU buffer to a RAM buffer
- * NB! Not very efficient
- */
-void gpu_memcpy(void* dst, int gpu_id, void* src, size_t len);
-
-
-
 /* Check that all bytes in the buffer contain the correct value
  * Returns buf_len on success and a value less than buf_len indicating 
  * wrong byte
  */
-size_t validate_gpu_buffer(int gpu_id, void* buf_ptr, size_t buf_len);
+size_t validate_gpu_buffer(int gpu_id, void* buf_ptr, size_t buf_len, uint8_t expected_val);
 
 
 #ifdef __cplusplus

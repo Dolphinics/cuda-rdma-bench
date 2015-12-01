@@ -19,7 +19,6 @@ __global__ void gpu_memset_kernel(void* buf, size_t len, uint8_t val)
 
     uint8_t* ptr = (uint8_t*) buf;
 
-    // FIXME: This code is broken, methinks...
     for (size_t i = pos * (len / num), n = (pos + 1) * (len / num); i < n && i < len; ++i)
     {
         ptr[i] = val;
@@ -162,4 +161,49 @@ sci_local_segment_t make_local_segment(sci_desc_t sd, unsigned adapter, unsigned
 
     log_debug("Prepared segment %u (%p) for NTB adapter %u", id, ptr, adapter);
     return segment;
+}
+
+
+
+size_t validate_gpu_buffer(int gpu, void* ptr, size_t len, uint8_t val)
+{
+    cudaError_t err = cudaSetDevice(gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+        exit(1);
+    }
+
+    cudaDeviceSynchronize();
+
+    uint8_t* buf = NULL;
+    err = cudaHostAlloc(&buf, len, cudaHostAllocDefault);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to allocate host memory: %s", cudaGetErrorString(err));
+        exit(1);
+    }
+
+    err = cudaMemcpy(buf, ptr, len, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to memcpy: %s", cudaGetErrorString(err));
+        exit(1);
+    }
+
+    cudaDeviceSynchronize();
+
+    size_t idx;
+    val = buf[0];
+    for (idx = 1; idx < len; ++idx)
+    {
+        if (buf[idx] != val)
+        {
+            log_debug("Byte %lu in GPU buffer differs (got %02x expected %02x)", idx, buf[idx], val);
+            break;
+        }
+    }
+
+    cudaFreeHost(buf);
+    return idx;
 }
