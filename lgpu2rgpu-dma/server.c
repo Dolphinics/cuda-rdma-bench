@@ -37,7 +37,7 @@ sci_callback_action_t trigger_validate_buffer(void* buf_info, sci_local_interrup
 {
     // TODO: Implement a mechanism to get the expected byte using data interrupts instead
     struct bufinfo* info = (struct bufinfo*) buf_info;
-    log_debug("Validating GPU buffer after DMA transfer...");
+
     size_t last_correct_byte = validate_gpu_buffer(info->gpu, info->ptr, info->len, 0);
     if (last_correct_byte != info->len)
     {

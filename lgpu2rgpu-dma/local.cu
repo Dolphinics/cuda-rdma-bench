@@ -196,6 +196,8 @@ size_t validate_gpu_buffer(int gpu, void* ptr, size_t len, uint8_t val)
 
     size_t idx;
     val = buf[0];
+
+    log_debug("Validating that every byte in buffer is set to %02x", val); 
     for (idx = 1; idx < len; ++idx)
     {
         if (buf[idx] != val)

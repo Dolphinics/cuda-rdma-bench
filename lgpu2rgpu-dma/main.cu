@@ -381,9 +381,11 @@ void client(sci_desc_t sd)
     uint64_t usecs = benchmark(sd, remote_node_id, adapter_no, local_segment, remote_segment, remote_segment_size, dma_mode, dma_flags, repeat);
     double megabytes_per_second = (remote_segment_size * repeat) / (double) usecs;
 
-    fprintf(stdout, "%5.3f %-5s\n", megabytes_per_second, size_factor == 1e6 ? "MB/s" : "MiB/s");
+    fprintf(stdout, "----------------- result -----------------\n");
+    fprintf(stdout, "Bandwidth: %.2f %-5s\n", megabytes_per_second, size_factor == 1e6 ? "MB/s" : "MiB/s");
+    fprintf(stdout, "Latency  : %lu µs\n", usecs / repeat);
+    fprintf(stdout, "------------------------------------------\n");
 
-    log_debug("Validating buffer after transfer...");
     if (!dma_pull)
     {
         SCITriggerInterrupt(validate_irq, 0, &err);
