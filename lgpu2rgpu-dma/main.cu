@@ -245,6 +245,8 @@ static void parse_args(int argc, char** argv)
         goto give_usage;
     }
 
+    log_info("Using local GPU %u", gpu_device_id);
+
     if (size_count == 0 && remote_node_id == NO_NODE_ID)
     {
         log_error("Either --size or --remote-node are required!");

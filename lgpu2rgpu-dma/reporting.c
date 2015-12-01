@@ -223,3 +223,51 @@ void log_debug(const char* frmt, ...)
     }
 
 }
+
+
+
+//void log_phaddr(sci_local_segment_t segment)
+//{
+//    if (verbosity >= 3)
+//    {
+//        sci_error_t err;
+//        sci_query_local_segment_t query;
+//
+//        query.subcommand = SCI_Q_LOCAL_SEGMENT_PHYS_ADDR;
+//        query.segment = segment;
+//
+//        SCIQuery(SCI_Q_LOCAL_SEGMENT, &query, 0, &err);
+//        if (err != SCI_ERR_OK)
+//        {
+//            log_error("Failed to query local segment: %s", SCIGetErrorString(err));
+//            return;
+//        }
+//
+//        log_debug("Local segment has phys addr: %lu", query.data.ioaddr);
+//    }
+//}
+
+
+
+void log_ioaddr(sci_local_segment_t segment)
+{
+    // TODO: Move this to main.cu and make a function there to get GPU name + bus addr
+
+    if (verbosity >= 3)
+    {
+        sci_error_t err;
+        sci_query_local_segment_t query;
+
+        query.subcommand = SCI_Q_LOCAL_SEGMENT_IOADDR;
+        query.segment = segment;
+
+        SCIQuery(SCI_Q_LOCAL_SEGMENT, &query, 0, &err);
+        if (err != SCI_ERR_OK)
+        {
+            log_error("Failed to query local segment: %s", SCIGetErrorString(err));
+            return;
+        }
+
+        log_debug("Local segment has IO addr: 0x%08lx", query.data.ioaddr);
+    }
+}
