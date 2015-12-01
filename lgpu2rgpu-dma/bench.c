@@ -35,7 +35,7 @@ uint64_t one_way(sci_desc_t sd, unsigned adapter, sci_local_segment_t local, sci
     if (err != SCI_ERR_OK)
     {
         log_error("Failed transfer! %s", SCIGetErrorString(err));
-        exit(1);
+        return 0;
     }
     
     SCIRemoveDMAQueue(q, 0, &err);

@@ -48,7 +48,7 @@ void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
     block.x = 4;
     block.y = 4;
 
-    log_debug("Filling buffer with value %02x", val);
+    log_debug("Filling buffer with value %02x...", val);
 
     gpu_memset_kernel<<<grid, block>>>(ptr, len, val);
 

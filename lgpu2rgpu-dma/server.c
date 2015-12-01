@@ -35,10 +35,18 @@ void stop_server()
  */
 sci_callback_action_t trigger_validate_buffer(void* buf_info, sci_local_interrupt_t irq, sci_error_t status)
 {
+    // TODO: Implement a mechanism to get the expected byte using data interrupts instead
     struct bufinfo* info = (struct bufinfo*) buf_info;
-
-    // TODO: do validate_buffer here
-
+    log_debug("Validating GPU buffer after DMA transfer...");
+    size_t last_correct_byte = validate_gpu_buffer(info->gpu, info->ptr, info->len, 0);
+    if (last_correct_byte != info->len)
+    {
+        log_error("Buffer is garbled, last correct byte is %lu but buffer size is %lu", last_correct_byte, info->len);
+    }
+    else
+    {
+        log_info("Buffer is valid after DMA transfer");
+    }
     return SCI_CALLBACK_CONTINUE;
 }
 
@@ -94,8 +102,6 @@ void server(sci_desc_t sd, unsigned adapter, int gpu, unsigned id, size_t size)
     {
         log_error("Failed to set segment unavailable, but continuing: %s", SCIGetErrorString(err));
     }
-
-    validate_gpu_buffer(gpu, buf, size, 0);
 
     // Remove interrupts
     // TODO: remove data interrupt

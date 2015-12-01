@@ -353,6 +353,16 @@ void client(sci_desc_t sd)
     log_info("Connected to segment %u (%.2f %s) on remote node %u", 
             remote_segment_id, remote_segment_size / (double) size_factor, size_factor == 1e6 ? "MB" : "MiB", remote_node_id);
 
+    // Connect to remote validation IRQ
+    sci_remote_interrupt_t validate_irq;
+
+    log_debug("Connecting to remote validation interrupt");
+    do
+    {
+        SCIConnectInterrupt(sd, &validate_irq, remote_node_id, adapter_no, remote_segment_id, SCI_INFINITE_TIMEOUT, 0, &err);
+    }
+    while (err != SCI_ERR_OK);
+
     // Create local GPU buffer
     void* buf = make_gpu_buffer(gpu_device_id, remote_segment_size);
     uint8_t val = rand() & 255;
@@ -370,8 +380,27 @@ void client(sci_desc_t sd)
     double megabytes_per_second = (remote_segment_size * repeat) / (double) usecs;
 
     fprintf(stdout, "%5.3f %-5s\n", megabytes_per_second, size_factor == 1e6 ? "MB/s" : "MiB/s");
+
+    log_debug("Validating buffer after transfer...");
+    if (!dma_pull)
+    {
+        SCITriggerInterrupt(validate_irq, 0, &err);
+    }
+    else
+    {
+        size_t last_byte = validate_gpu_buffer(gpu_device_id, buf, remote_segment_size, 0); // FIXME: pass in expected byte
+        if (last_byte != remote_segment_size)
+        {
+            log_error("Buffer is garbled, last correct byte is %lu but buffer size is %lu", last_byte, remote_segment_size);
+        }
+        else
+        {
+            log_info("Buffer is valid after DMA transfer");
+        }
+    }
     
     // Clean up
+    SCIDisconnectInterrupt(validate_irq, 0, &err);
     do
     {
         SCIDisconnectSegment(remote_segment, 0, &err);
