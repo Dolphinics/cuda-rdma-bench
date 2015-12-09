@@ -1,76 +1,123 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <sisci_api.h>
-#include <stdint.h>
+#include <pthread.h>
+#include <time.h>
+#include "translist.h"
 #include "common.h"
+#include "util.h"
 #include "reporting.h"
+#include "bench.h"
 
 
+/* Should we keep running? */
+static volatile int keep_running = 1;
+static pthread_cond_t signal = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-uint64_t one_way(sci_desc_t sd, unsigned adapter, sci_local_segment_t local, sci_remote_segment_t remote, size_t size, unsigned flags, int repeat)
+
+uint64_t ts_usecs()
 {
-    sci_error_t err;
-    sci_dma_queue_t q;
-
-    SCICreateDMAQueue(sd, &q, adapter, 1, 0, &err);
-    if (err != SCI_ERR_OK)
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
     {
-        log_error("Failed to create DMA queue: %s", SCIGetErrorString(err));
-        exit(1);
-    }
-
-    dis_dma_vec_t vec[repeat];
-
-    for (int i = 0; i < repeat; ++i)
-    {
-        vec[i].size = size;
-        vec[i].local_offset = 0;
-        vec[i].remote_offset = 0;
-        vec[i].flags = 0;
-    }
-
-    uint64_t start = current_usecs();
-    SCIStartDmaTransferVec(q, local, remote, repeat, vec, NULL, NULL,  SCI_FLAG_DMA_WAIT | flags, &err);
-    uint64_t end = current_usecs();
-
-    if (err != SCI_ERR_OK)
-    {
-        log_error("Failed transfer! %s", SCIGetErrorString(err));
         return 0;
     }
-    
-    SCIRemoveDMAQueue(q, 0, &err);
-    if (err != SCI_ERR_OK)
-    {
-        log_error("Failed to remove DMA queue: %s", SCIGetErrorString(err));
-    }
-
-    return end - start;
+    return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
 }
 
 
-
-uint64_t benchmark(
-        sci_desc_t sd, unsigned remote_node_id, unsigned adapter, 
-        sci_local_segment_t local, sci_remote_segment_t remote, size_t size, 
-        dma_mode_t mode, unsigned flags, int repeat)
+void stop_server()
 {
-    uint64_t usecs = 0;
+    log_info("Stopping server...");
 
+    pthread_mutex_lock(&lock);
+    keep_running = 0;
+    pthread_cond_signal(&signal);
+    pthread_mutex_unlock(&lock);
+}
+
+
+void server(unsigned adapter, int gpu, unsigned id, size_t size)
+{
+    sci_error_t err;
+    sci_desc_t sd;
+
+    SCIOpen(&sd, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to open SISCI descriptor");
+        return;
+    }
+
+    sci_local_segment_t segment;
+    sci_map_t mapping;
+    void* buffer;
+
+    if (gpu != NO_GPU)
+    {
+        err = make_gpu_segment(sd, adapter, id, &segment, size, gpu, &buffer);
+    }
+    else
+    {
+        err = make_ram_segment(sd, adapter, id, &segment, size, &mapping, &buffer);
+    }
+
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to create segment");
+        goto close_desc;
+    }
+
+    SCISetSegmentAvailable(segment, adapter, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to set segment available");
+        goto free_segment;
+    }
+
+    log_info("Running server...");
+    pthread_mutex_lock(&lock);
+    while (keep_running)
+    {
+        pthread_cond_wait(&signal, &lock);
+    }
+    pthread_mutex_unlock(&lock);
+    log_info("Server stopped");
+
+    SCISetSegmentUnavailable(segment, adapter, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
+
+free_segment:
+    if (gpu != NO_GPU)
+    {
+        free_gpu_segment(segment, gpu, buffer);
+    }
+    else
+    {
+        free_ram_segment(segment, mapping);
+    }
+close_desc:
+    SCIClose(sd, 0, &err);
+}
+
+
+void client(bench_mode_t mode, translist_t tl, int repeat, int use_iec)
+{
+    translist_desc_t tl_desc = translist_desc(tl);
+
+    // Do benchmark
     switch (mode)
     {
-        case DMA_TRANSFER_ONE_WAY:
-            usecs = one_way(sd, adapter, local, remote, size, flags, repeat);
-            break;
-
-        case DMA_TRANSFER_TWO_WAY:
-            // TODO: Implement this
-            log_error("two way transfer not implemented yet");
+        case BENCH_SCI_DATA_INTERRUPT:
+            log_error("%s is not yet supported", bench_mode_name(mode));
             break;
 
         default:
-            log_error("Unknown DMA transfer mode");
+        case BENCH_DO_NOTHING:
+            log_error("No benchmarking operation is set");
             break;
     }
 
-    return usecs;
+    // Verify transfer
+    // TODO: Map remote segment and do memcmp
 }

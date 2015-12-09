@@ -159,7 +159,7 @@ sci_local_segment_t make_local_segment(sci_desc_t sd, unsigned adapter, unsigned
         exit(1);
     }
 
-    log_ioaddr(segment);
+    log_ioaddr(segment); // TODO: rewrite this as get_ioaddr and then do log_debug instead
     log_debug("Prepared segment %u (%p) for NTB adapter %u", id, ptr, adapter);
     return segment;
 }

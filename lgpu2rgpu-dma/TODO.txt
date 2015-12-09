@@ -1,4 +1,4 @@
-- make common.c
+- make common.c / utils.c
 	- current_usecs
 	- get_ioaddr and phys_addr and remote_ioaddr
 	- validate_buffer (which is host memory)
@@ -20,14 +20,30 @@
 	- scimemcpy
 	- scimemwrite
 	
-- make program accept --mode=dma [default and alias for scidma], --mode=read, --mode=write, --mode=sciwrite, --mode=scimemcpy
-	- change dma_mode_t to bench_mode_t and alter values
+- make program accept 
+    --mode=dma-push
+    --mode=dma-push-global
+    --mode=dma-pull
+    --mode=dma-pull-global
+    --mode=read
+    --mode=write
+    --mode=sciwrite
+    --mode=scimemcpy-write
+    --mode=scimemcpy-read
+    --mode=data-interrupt
 
 - make defines in common.h in Makefile instead
 
 - make ram.c
 	- make_ram_segment (make local segment in ram and similar functions, make_ram_buffer etc)
 
-- make data-interrupt to pass value that's supposed to be stored in buffer
-
 - restructure bench.c and main.cu, move benchmarking functionality out from main.cu but avoid making extremely long argument lists
+
+- todo: add more control over dma_vec
+
+- rdma is not correct (rather check if tesla or quadro
+
+- map remote segment to local RAM and compare buffer in RAM (or on GPU with
+  gpu_memcmp)
+
+- Rename this bench-rdma or something, no longer GPU 2 GPU only

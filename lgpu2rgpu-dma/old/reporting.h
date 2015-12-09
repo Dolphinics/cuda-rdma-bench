@@ -18,6 +18,12 @@ void log_error(const char* format, ...);
 
 void log_debug(const char* format, ...);
 
+void log_ioaddr(sci_local_segment_t segment);
+
+void log_phaddr(sci_local_segment_t segment);
+
+const char* SCIGetErrorString(sci_error_t error);
+
 #ifdef __cplusplus
 }
 #endif

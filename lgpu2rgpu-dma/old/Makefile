@@ -1,10 +1,11 @@
 PROJECT := $(notdir $(shell pwd))
-OBJECTS	:= main.o translist.o reporting.o util.o gpu.o bench.o
+OBJECTS	:= main.o reporting.o local.o server.o bench.o
 
 CC	:= gcc
 NVCC 	:= /usr/local/cuda/bin/nvcc
-CFLAGS	:= -Wall -Wextra -D_REENTRANT -g
+CFLAGS	:= -Wall -Wextra -D_REENTRANT
 
+DEFINES := -DMAX_SEGMENT_SIZE=128
 INCLUDE	:= /usr/local/cuda/include /opt/DIS/include /opt/DIS/include/dis
 
 .PHONY: all clean $(PROJECT)
@@ -15,7 +16,7 @@ clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
 $(PROJECT): $(OBJECTS)
-	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lcuda -lrt -lpthread
+	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lcuda -lrt
 
 %.o: %.c
 	$(CC) -x c -std=gnu99 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c 

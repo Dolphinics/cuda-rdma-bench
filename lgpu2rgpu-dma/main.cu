@@ -1,84 +1,69 @@
 #include <cuda.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <sisci_api.h>
 #include <signal.h>
-#include <time.h>
-extern "C" {
-#include "local.h"
+#include "translist.h"
 #include "reporting.h"
 #include "common.h"
-}
-
-
-
-/* Program parameters */
-static int dma_global = 0;
-static int dma_pull = 0;
-static dma_mode_t dma_mode = DMA_TRANSFER_ONE_WAY;
-static size_t size_factor = 1e6;
-static size_t size_count = 0;
-static unsigned local_segment_id = NO_ID;
-static unsigned remote_segment_id = NO_ID;
-static unsigned remote_node_id = NO_NODE_ID;
-static unsigned local_node_id = NO_NODE_ID;
-static unsigned adapter_no = 0;
-static int gpu_device_count = 0;
-static int gpu_device_id = NO_ID;
-static int repeat = DEFAULT_REPEAT;
-
+#include "gpu.h"
+#include "util.h"
+#include "bench.h"
 
 
 /* Program options */
 static struct option options[] = {
-    { .name = "local-id", .has_arg = 1, .flag = NULL, .val = 2 },
-    { .name = "remote-id", .has_arg = 1, .flag = NULL, .val = 3 },
-    { .name = "remote-node", .has_arg = 1, .flag = NULL, .val = 4 },
-    { .name = "size", .has_arg = 1, .flag = NULL, .val = 5 },
-    { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 6 },
-    { .name = "both-ways", .has_arg = 0, .flag = NULL, .val = 8 },
-    { .name = "pull", .has_arg = 0, .flag = NULL, .val = 7 },
-    { .name = "info", .has_arg = 0, .flag = NULL, .val = 'h' },
+    { .name = "adapter", .has_arg = 1, .flag = NULL, .val = 'a' },
+    { .name = "remote-node", .has_arg = 1, .flag = NULL, .val = 'n' },
+    { .name = "local-id", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "remote-id", .has_arg = 1, .flag = NULL, .val = 'r' },
+    { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
+    { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 'g' },
+    { .name = "type", .has_arg = 1, .flag = NULL, .val = 'b' },
+    { .name = "bench", .has_arg = 1, .flag = NULL, .val = 'b' },
+    { .name = "benchmark", .has_arg = 1, .flag = NULL, .val = 'b' },
+    { .name = "count", .has_arg = 1, .flag = NULL, .val = 'c' },
+    { .name = "verbose", .has_arg = 0, .flag = NULL, .val = 'v' },
+    { .name = "iec", .has_arg = 0, .flag = NULL, .val = 'i' },
     { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
     { .name = NULL, .has_arg = 0, .flag = NULL, .val = 0 }
 };
 
 
-
-/* Signal handler to stop the benchmarking server */
-static void stop_program()
+/* List supported benchmarking modes */
+static void list_bench_modes()
 {
-    log_info("Stopping server...");
-    stop_server();
-}
+    fprintf(stderr, "Benchmarking operations\n");
+    fprintf(stderr, "  %-18s  %-56s\n", "name", "explanation");
 
+    const bench_mode_t* mode = all_benchmarking_modes;
 
-
-/* Get current timestamp in microseconds */
-extern "C"
-uint64_t current_usecs()
-{
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
+    while (*mode != BENCH_DO_NOTHING)
     {
-        log_error("Failed to get realtime timestamp");
+        fprintf(stderr, "  %-18s  %-56s\n", bench_mode_name(*mode), bench_mode_desc(*mode));
+        ++mode;
     }
-    return ts.tv_sec * 1e6L + ts.tv_nsec / 1e3L;
+    fprintf(stderr, "\n");
 }
-
-
 
 
 /* List local GPUs */
-static void list_gpu_devices()
+static void list_gpu_devices(size_t size_factor)
 {
     cudaError_t err;
 
+    int gpu_device_count = 0;
+    err = cudaGetDeviceCount(&gpu_device_count);
+    if (err != cudaSuccess)
+    {
+        log_error("Unexpected error: %s", cudaGetErrorString(err));
+        gpu_device_count = 0;
+    }
+
     fprintf(stderr, "Devices\n");
-    fprintf(stderr, "  %3s %-20s %-9s %-8s %3s %7s %3s %4s   %-13s\n",
+    fprintf(stderr, "  %2s %-20s %-9s %-8s %3s %7s %3s %4s   %-13s\n",
             "id", "name", "io addr", "map hmem", "tcc", "unified", "L1", "rdma", "glob mem size");
 
     for (int i = 0; i < gpu_device_count; ++i)
@@ -92,14 +77,16 @@ static void list_gpu_devices()
             exit('h');
         }
 
-        fprintf(stderr, "  %3d %-20s %02x:%02x.%-3x",
+        int rdma = !strncmp("Tesla", prop.name, 5) || !strncmp("Quadro", prop.name, 6);
+
+        fprintf(stderr, "  %2d %-20s %02x:%02x.%-3x",
                 i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID);
         
         fprintf(stderr, " %8s", prop.canMapHostMemory ? "yes" : "no");
         fprintf(stderr, " %3s", prop.tccDriver ? "yes" : "no");
         fprintf(stderr, " %7s", prop.unifiedAddressing ? "yes" : "no");
         fprintf(stderr, " %3s", prop.globalL1CacheSupported ? "yes" : "no");
-        fprintf(stderr, " %4s", prop.major >= 5 ? "yes" : "no");
+        fprintf(stderr, " %4s", rdma ? "yes" : "no");
 
         fprintf(stderr, "   %9.02f %-3s", prop.totalGlobalMem / (double) size_factor, 
                 size_factor == 1e6 ? "MB" : "MiB");
@@ -110,362 +97,316 @@ static void list_gpu_devices()
 }
 
 
-
-/* Parse program arguments */
-static void parse_args(int argc, char** argv)
+/* Retrieve local cluster node ID */
+static unsigned get_local_node_id(unsigned adapter_no)
 {
-    int opt, idx;
-    char* str;
+    sci_error_t err = SCI_ERR_OK;
+    unsigned node_id = NO_NODE;
 
-    while ((opt = getopt_long(argc, argv, "-:ha:igr:v", options, &idx)) != -1)
-    {
-        switch (opt)
-        {
-            case ':': // missing value
-                log_error("%s %s requires a value", (argv[optind - 1][1] != '-') ? "Option" : "Argument", argv[optind - 1]);
-                goto give_usage;
-
-            case '?': // unknown option or argument
-                log_error("Unknown %s: %s", (argv[optind - 1][1] != '-') ? "option" : "argument", argv[optind - 1]);
-                goto give_usage;
-
-            case 'h': // show help
-                list_gpu_devices();
-                // TODO: List NTB adapters
-                goto give_usage;
-
-            case 'a':
-                str = NULL;
-                adapter_no = strtoul(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || adapter_no == 0)
-                {
-                    log_error("Option -a must be a valid NTB adapter number");
-                    exit('a');
-                }
-                break;
-
-            case 'i': // use MiBs (1024s) instead of MBs (1000s)
-                size_factor = 1 << 20;
-                break;
-
-            case 'g': // do global DMA transfer
-                dma_global = 1;
-                break;
-
-            case 7: // pull data instead of pushing it
-                dma_pull = 1;
-                break;
-
-            case 8: // set transfer mode
-                dma_mode = DMA_TRANSFER_TWO_WAY;
-                break;
-
-            case 'r': // set number of times to repeat for benchmarking granularity
-                str = NULL;
-                repeat = strtol(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || repeat <= 0)
-                {
-                    log_error("Option -r must be at least 1");
-                    exit('r');
-                }
-                break;
-
-            case 2: // set local segment ID
-                str = NULL;
-                local_segment_id = strtoul(optarg, &str, 0);
-                if (str == NULL || *str != '\0' || local_segment_id >= MAX_ID)
-                {
-                    log_error("Argument --local-id must be between 0 and %u", MAX_ID);
-                    exit(2);
-                }
-                break;
-
-            case 3: // set remote segment ID
-                str = NULL;
-                remote_segment_id = strtoul(optarg, &str, 0);
-                if (str == NULL || *str != '\0' || remote_segment_id >= MAX_ID)
-                {
-                    log_error("Argument --remote-id must be between 0 and %u", MAX_ID);
-                    exit(3);
-                }
-                break;
-
-            case 4: // set remote node ID
-                str = NULL;
-                remote_node_id = strtoul(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || remote_node_id >= MAX_NODE_ID)
-                {
-                    log_error("Argument --remote-node must be a valid cluster node ID");
-                    exit(4);
-                }
-                break;
-
-            case 5: // set segment size
-                str = NULL;
-                size_count = strtoul(optarg, &str, 0);
-                if (str == NULL || *str != '\0' || size_count == 0)
-                {
-                    log_error("Argument --size must be at least 1");
-                    exit(5);
-                }
-                break;
-
-            case 6: // set local GPU
-                str = NULL;
-                gpu_device_id = strtol(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || gpu_device_id < 0 || gpu_device_id >= gpu_device_count)
-                {
-                    log_error("Argument --gpu-id must be a valid GPU ID");
-                    exit(6);
-                }
-                break;
-
-            case 'v': // increase verbosity level
-                ++verbosity;
-                break;
-        }
-    }
-
-    // Find out local node ID
-    // We have to do this here because we need to know which adapter to use
-    log_info("Using local NTB adapter %u", adapter_no);
-    
-    sci_error_t err;
-    SCIGetLocalNodeId(adapter_no, (unsigned*) &local_node_id, 0, &err);
+    sci_desc_t desc;
+    SCIOpen(&desc, 0, &err);
     if (err != SCI_ERR_OK)
     {
-        log_error("Unexpected error: %s", SCIGetErrorString(err));
+        log_error("%s", SCIGetErrorString(err));
         exit(1);
     }
 
-    // Do some sanity checking
-    if (gpu_device_id == NO_ID)
+    SCIGetLocalNodeId(adapter_no, &node_id, 0, &err);
+    if (err != SCI_ERR_OK)
     {
-        log_error("No local GPU is specified!");
-        goto give_usage;
-    }
-
-    log_info("Using local GPU %u", gpu_device_id);
-
-    if (size_count == 0 && remote_node_id == NO_NODE_ID)
-    {
-        log_error("Either --size or --remote-node are required!");
-        goto give_usage;
-    }
-
-    if ((size_count * size_factor) >= MAX_SEGMENT_SIZE)
-    {
-        log_error("Maximum segment size is %lu MiB", MAX_SEGMENT_SIZE / (1 << 20));
+        log_error("%s", SCIGetErrorString(err));
         exit(1);
     }
 
-    if (local_node_id == remote_node_id)
-    {
-        log_warn("Remote cluster node ID is the same as the local node ID");
-    }
+    SCIClose(desc, 0, &err);
 
-    if (local_segment_id == NO_ID)
-    {
-        local_segment_id = local_node_id;
-        log_warn("No local segment ID is specified, using %d", local_node_id);
-    }
-
-    if (remote_node_id != NO_NODE_ID)
-    {
-        log_info("Running in client mode");
-
-        if (remote_segment_id == NO_ID)
-        {
-            remote_segment_id = remote_node_id;
-            log_warn("No remote segment ID is specified, using %d", remote_node_id);
-        }
-
-        if (size_count != 0)
-        {
-            log_warn("Argument --size has no effect in client mode");
-        }
-    }
-    else
-    {
-        log_info("Running in server mode. Connect using node ID %d and segment ID %d", local_node_id, local_segment_id);
-
-        if (dma_mode != DMA_TRANSFER_ONE_WAY)
-        {
-            log_warn("Argument --both-ways have no effect in server mode");
-        }
-
-        if (!!(dma_global))
-        {
-            log_warn("Option -g has no effect in server mode");
-        }
-
-        if (repeat != DEFAULT_REPEAT)
-        {
-            log_warn("Option -r has no effect in server mode");
-        }
-    }
-
-    return;
-
-give_usage:
-    fprintf(stderr, 
-            "Usage: %s --gpu=<gpu id> --size=<size> [-i] [-a <adapter no>] [--local-id=<number>]\n"
-            "   or: %s --gpu=<gpu id> --remote-node=<node id> [-a <adapter no>] [--remote-id=<number>] [--pull] [-g] [--both-ways]\n"
-            "   or: %s --info\n"
-            "\nDescription\n"
-            "    Copy memory from a local NVIDIA GPU to a remote NVIDIA GPU across a NTB link.\n"
-            "\nArguments\n"
-            "  --gpu=<gpu id>           specify which local GPU to use\n"
-            "  --size=<size>            memory segment size in MB (or MiB if -i is set)\n"
-            "  --remote-node=<node id>  remote cluster node ID\n"
-            "  --local-id=<number>      number identifying the local memory segment\n"
-            "  --remote-id=<number>     number identifying the memory segment on a remote host\n"
-            "  --pull                   pull data from remote hode instead of pushing it\n"
-            "  --both-ways              do DMA transfer in both directions simultaneously\n"
-            "  --info                   list GPUs and NTB adapters and quit\n"
-            "\nOptions\n"
-            "   -i                      use IEC units (1024) instead of SI units (1000)\n"
-            "   -a <adapter no>         local NTB adapter number (defaults to 0)\n"
-            "   -g                      do global DMA transfer\n"
-            "   -r <number>             number of times to repeat (default is %d)\n"
-            "   -v                      increase verbosity level\n"
-            , argv[0], argv[0], argv[0], DEFAULT_REPEAT);
-    
-    exit(1);
+    return node_id;
 }
 
 
-
-/* Run benchmarking client */
-void client(sci_desc_t sd)
+/* Give program usage */
+static void give_usage(const char* progname)
 {
-    sci_error_t err;
-    sci_remote_segment_t remote_segment;
-
-    // Connect to remote segment
-    log_debug("Trying to connect to remote segment %u on remote node %u", remote_segment_id, remote_node_id);
-    do
-    {
-        SCIConnectSegment(sd, &remote_segment, remote_node_id, remote_segment_id, adapter_no, NULL, NULL, SCI_INFINITE_TIMEOUT, 0, &err);
-    }
-    while (err != SCI_ERR_OK);
-
-    // Retrieve segment size
-    size_t remote_segment_size = SCIGetRemoteSegmentSize(remote_segment);
-    log_info("Connected to segment %u (%.2f %s) on remote node %u", 
-            remote_segment_id, remote_segment_size / (double) size_factor, size_factor == 1e6 ? "MB" : "MiB", remote_node_id);
-
-    // Connect to remote validation IRQ
-    sci_remote_interrupt_t validate_irq;
-
-    log_debug("Connecting to remote validation interrupt");
-    do
-    {
-        SCIConnectInterrupt(sd, &validate_irq, remote_node_id, adapter_no, remote_segment_id, SCI_INFINITE_TIMEOUT, 0, &err);
-    }
-    while (err != SCI_ERR_OK);
-
-    // Create local GPU buffer
-    void* buf = make_gpu_buffer(gpu_device_id, remote_segment_size);
-    uint8_t val = rand() & 255;
-    gpu_memset(gpu_device_id, buf, remote_segment_size, val);
-
-    sci_local_segment_t local_segment = make_local_segment(sd, adapter_no, local_segment_id, buf, remote_segment_size);
-
-    // Do benchmarks
-    unsigned dma_flags = 0;
-    dma_flags |= dma_pull ? SCI_FLAG_DMA_READ : 0;
-    dma_flags |= dma_global ? SCI_FLAG_DMA_GLOBAL : 0;
-    
-    log_info("Starting benchmark...");
-    uint64_t usecs = benchmark(sd, remote_node_id, adapter_no, local_segment, remote_segment, remote_segment_size, dma_mode, dma_flags, repeat);
-    double megabytes_per_second = (remote_segment_size * repeat) / (double) usecs;
-
-    fprintf(stdout, "----------------- result -----------------\n");
-    fprintf(stdout, "Bandwidth: %.2f %-5s\n", megabytes_per_second, size_factor == 1e6 ? "MB/s" : "MiB/s");
-    fprintf(stdout, "Latency  : %lu µs\n", usecs / repeat);
-    fprintf(stdout, "------------------------------------------\n");
-
-    if (!dma_pull)
-    {
-        SCITriggerInterrupt(validate_irq, 0, &err);
-    }
-    else
-    {
-        size_t last_byte = validate_gpu_buffer(gpu_device_id, buf, remote_segment_size, 0); // FIXME: pass in expected byte
-        if (last_byte != remote_segment_size)
-        {
-            log_error("Buffer is garbled, last correct byte is %lu but buffer size is %lu", last_byte, remote_segment_size);
-        }
-        else
-        {
-            log_info("Buffer is valid after DMA transfer");
-        }
-    }
-    
-    // Clean up
-    SCIDisconnectInterrupt(validate_irq, 0, &err);
-    do
-    {
-        SCIDisconnectSegment(remote_segment, 0, &err);
-    }
-    while (err == SCI_ERR_BUSY);
-    free_gpu_buffer(gpu_device_id, buf);
+    fprintf(stderr,
+            "Usage: %s --size=<size>\n"
+            "   or: %s --remote-node=<node id> --mode=<benchmark type>\n"
+            "\nDescription\n"
+            "    Benchmark how long it takes to transfer memory between a local and a\n"
+            "    remote segment across an NTB link.\n"
+            "\nServer arguments\n"
+            "  --size=<size>            memory size in MB (or MiB if --iec is set)\n"
+            "\nClient arguments\n"
+            "  --remote-node=<node id>  remote cluster node ID\n"
+            "  --bench=<bencmark type>  specify benchmarking operation\n"
+            "  --count=<number>         number of times to repeat test\n"
+            "\nOptional arguments (both client and server)\n"
+            "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
+            "  --local-id=<segment id>  number identifying the local segment\n"
+            "  --remote-id=<segment id> number identifying the remote segment\n"
+            "  --gpu=<gpu id>           specify a local GPU to use\n"
+            "  --verbose                increase verbosity level\n"
+            "  --iec                    use IEC units (1024) instead of SI units (1000)\n"
+            "  --help                   show list of local GPUs and benchmarking operations\n"
+            , progname, progname);
 }
-
 
 
 int main(int argc, char** argv)
 {
-    // Get number of GPUs
-    cudaError_t cu_err = cudaGetDeviceCount(&gpu_device_count);
+    /* Program parameters */
+    unsigned local_adapter = 0;
+    unsigned remote_node_id = NO_NODE;
+    unsigned local_node_id = NO_NODE;
+    unsigned local_segment_id = NO_ID;
+    unsigned remote_segment_id = NO_ID;
+    int local_gpu_id = NO_GPU;
 
-    if (cu_err != cudaSuccess)
+    size_t local_segment_count = 0;
+    size_t local_segment_factor = 1e6;
+
+    int repeat_count = 1;
+    bench_mode_t mode = BENCH_DO_NOTHING;
+
+    /* Do shortcut */
+    if (argc < 2)
     {
-        log_error("No CUDA enabled local GPUs found!");
+        give_usage(argv[0]);
         exit(1);
     }
 
-    // Initialize the SISCI API
-    sci_error_t sci_err;
-    sci_desc_t sci_desc;
+    /* Parse program arguments */
+    int opt, idx;
+    char* str;
 
-    SCIInitialize(0, &sci_err);
-    if (sci_err != SCI_ERR_OK)
+    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:vih", options, &idx)) != -1)
     {
-        log_error("Failed to initialize SISCI API!");
+        switch (opt)
+        {
+            case ':': // missing value
+                log_error("Option %s requires a value", argv[optind-1]);
+                give_usage(argv[0]);
+                exit(':');
+
+            case '?': // unknown option
+                log_error("Unknown option: %s", argv[optind-1]);
+                give_usage(argv[0]);
+                exit('?');
+
+            case 'h': // show help
+                list_gpu_devices(local_segment_factor);
+                list_bench_modes();
+                fprintf(stderr, "\n");
+                give_usage(argv[0]);
+                exit('h');
+
+            case 'a': // set local adapter number
+                str = NULL;
+                local_adapter = strtoul(optarg, &str, 10);
+                if (str == NULL || *str != '\0')
+                {
+                    log_error("Argument %s must be a valid adapter number", argv[optind-1]);
+                    exit('a');
+                }
+                break;
+
+            case 'n': // set remote node
+                str = NULL;
+                remote_node_id = strtoul(optarg, &str, 10);
+                if (str == NULL || *str != '\0' || remote_node_id == NO_NODE)
+                {
+                    log_error("Argument %s must be a valid cluster node ID", argv[optind-1]);
+                    exit('n');
+                }
+                break;
+
+            case 'l': // set local segment ID
+                str = NULL;
+                local_segment_id = strtoul(optarg, &str, 0);
+                if (str == NULL || *str != '\0')
+                {
+                    log_error("Argument %s must be a valid segment ID", argv[optind-1]);
+                    exit('l');
+                }
+                break;
+
+            case 'r': // set remote segment ID
+                str = NULL;
+                remote_segment_id = strtoul(optarg, &str, 0);
+                if (str == NULL || *str != '\0')
+                {
+                    log_error("Argument %s must be a valid segment ID", argv[optind-1]);
+                    exit('r');
+                }
+                break;
+
+            case 's': // set segment size
+                str = NULL;
+                local_segment_count = strtoul(optarg, &str, 0);
+                if (str == NULL || *str != '\0' || local_segment_count == 0 || local_segment_count >= MAX_SIZE || local_segment_count * local_segment_factor >= MAX_SIZE)
+                {
+                    log_error("Argument %s must be a valid segment size in %s", argv[optind-1], local_segment_factor == 1e3 ? "MB" : "MiB");
+                    exit('s');
+                }
+                break;
+
+            case 'g': // set local GPU
+                str = NULL;
+                local_gpu_id = strtol(optarg, &str, 10);
+                if (str == NULL || *str != '\0' || local_gpu_id < 0)
+                {
+                    log_error("Argument %s must be a valid GPU number", argv[optind-1]);
+                    exit('g');
+                }
+                break;
+
+            case 'b': // set benchmark mode
+                mode = bench_mode_from_name(optarg);
+                if (mode == BENCH_DO_NOTHING)
+                {
+                    log_error("Argument %s must be a valid benchmarking mode", argv[optind-1]);
+                    exit('m');
+                }
+                break;
+
+            case 'c': // set repeat count
+                str = NULL;
+                repeat_count = strtol(optarg, &str, 10);
+                if (str == NULL || *str != '\0' || repeat_count <= 0)
+                {
+                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    exit('c');
+                }
+                break;
+
+            case 'v': // increase verbosity
+                ++verbosity;
+                break;
+
+            case 'i': // use IEC units instead of SI
+                log_debug("Using IEC units");
+                local_segment_factor = 1 << 20;
+                break;
+        }
+    }
+
+    /* Sanity checking */
+    if (remote_node_id == NO_NODE && local_segment_count == 0)
+    {
+        log_error("Either segment size or remote node ID must be specified");
+        give_usage(argv[0]);
+        exit(1);
+    }
+    if (remote_node_id != NO_NODE && mode == BENCH_DO_NOTHING)
+    {
+        log_error("No benchmarking operation is specified");
+        give_usage(argv[0]);
         exit(1);
     }
 
-    SCIOpen(&sci_desc, 0, &sci_err);
-    if (sci_err != SCI_ERR_OK)
+    /* Get number of CUDA enabled GPUs */
+    if (local_gpu_id != NO_GPU)
     {
-        log_error("Unexpected error: %s", SCIGetErrorString(sci_err));
+        int gpu_count;
+        if (cudaGetDeviceCount(&gpu_count) != cudaSuccess)
+        {
+            log_warn("Failed to initialize CUDA, setting GPU will not work");
+            gpu_count = 0;
+        }
+
+        if (local_gpu_id >= gpu_count)
+        {
+            log_error("Invalid local GPU selected");
+            exit(1);
+        }
+    }
+
+    /* Initialize SISCI API */
+    sci_error_t err = SCI_ERR_OK;
+    SCIInitialize(0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("%s", SCIGetErrorString(err));
         exit(1);
     }
-    
 
-    // Parse program arguments and set parameters
-    parse_args(argc, argv);
+    local_node_id = get_local_node_id(local_adapter);
+    log_debug("Local node ID %u (adapter %u)", local_node_id, local_adapter);
 
-    srand(current_usecs() / 1000);
-
-    // Run as server or client?
-    if (remote_node_id == NO_ID)
+    if (local_gpu_id != NO_GPU)
     {
-        // FIXME: This is the non-recommended way of doing this, 
-        //        but seems to be the only semi-portable way...
-        signal(SIGINT, (sig_t) &stop_program);
+        log_info("GPU segment is specified");
+    }
 
-        server(sci_desc, adapter_no, gpu_device_id, local_segment_id, size_factor * size_count);
+    // Run as client or server
+    if (remote_node_id == NO_NODE)
+    {
+        if (local_segment_count >= MAX_SIZE || local_segment_factor * local_segment_count >= MAX_SIZE)
+        {
+            log_error("Segment size is too large");
+            exit(1);
+        }
+        log_info("Segment size is set to %lu %s", local_segment_factor * local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
+
+        if (mode != BENCH_DO_NOTHING)
+        {
+            log_warn("Setting benchmarking operation has no effect in server mode");
+        }
+
+        if (repeat_count != 1)
+        {
+            log_warn("Setting repeat count has no effect in server mode");
+        }
+
+        if (local_segment_id == NO_ID)
+        {
+            log_warn("No local segment ID specified, using node ID...");
+            local_segment_id = local_node_id;
+        }
+        log_info("Connect to node %u with segment ID %u", local_node_id, local_segment_id);
+
+        signal(SIGINT, (sig_t) &stop_server);
+        signal(SIGTERM, (sig_t) &stop_server);
+        server(local_adapter, local_gpu_id, local_segment_id, local_segment_count * local_segment_factor);
     }
     else
     {
-        client(sci_desc);
+        if (local_segment_count != 0)
+        {
+            log_warn("Setting segment size has no effect in client mode");
+        }
+
+        if (local_segment_id == NO_ID)
+        {
+            log_warn("No local segment ID specified, using node ID...");
+            local_segment_id = local_node_id;
+        }
+        if (remote_segment_id == NO_ID)
+        {
+            log_warn("No remote segment ID specified using node ID...");
+            remote_segment_id = remote_node_id;
+        }
+
+        log_info("Initializing transfer list...");
+
+        translist_t ts;
+        if (translist_create(&ts, local_adapter, local_segment_id, remote_node_id, remote_segment_id, local_gpu_id) != 0)
+        {
+            log_error("Unexpected error when creating transfer list, aborting...");
+            exit(1);
+        }
+
+        translist_desc_t tsd = translist_descriptor(ts);
+        log_info("Remote segment size %lu %s", tsd.segment_size, local_segment_factor == 1e6 ? "MB" : "MiB");
+
+        // TODO: Make client accept many --size arguments and server only one (big)
+        // --transfer=size:offset
+        translist_insert(ts, 0, 0, tsd.segment_size);
+
+        client(mode, ts, repeat_count, local_segment_factor != 1e6);
+
+        translist_delete(ts);
     }
 
-    SCIClose(sci_desc, 0, &sci_err);
     SCITerminate();
-
     exit(0);
 }
