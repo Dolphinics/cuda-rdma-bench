@@ -49,7 +49,14 @@ void gpu_memset(int gpu, void* buf, size_t len, uint8_t val);
  *
  * Returns the byte position where the first difference is encountered
  */
-size_t gpu_memcmp(int gpu, void* gpu_ptr, void* ram_ptr, size_t len);
+size_t gpu_memcmp(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
+
+
+//void gpu_copy_remote_to_local(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
+
+//void gpu_copy_local_to_remote(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
+
+void gpu_memcpy_buffer_to_local(int gpu, void* gpu_ptr, void* local_ptr, size_t len);
 
 
 /* Get the device pointer for a device buffer

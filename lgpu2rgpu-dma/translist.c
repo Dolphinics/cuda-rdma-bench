@@ -20,13 +20,13 @@ struct transfer_list
     unsigned int            remote_segment_id;
     sci_remote_segment_t    remote_segment;
     size_t                  segment_size;
+    sci_remote_interrupt_t  validate_irq;
     int                     gpu_device_id;
     void*                   local_buf_ptr;
     sci_map_t               buf_mapping;
     size_t                  entry_list_size;
     translist_entry_t       entry_list[0];
 };
-
 
 
 int translist_create(translist_t* handle, unsigned adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu)
@@ -66,10 +66,23 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
     list->remote_node_id = remote_node;
     list->remote_segment_id = remote_segment;
 
+    log_debug("Trying to connect to remote interrupt on cluster node %u", remote_node);
+    do
+    {
+        SCIConnectInterrupt(list->sd, &list->validate_irq, remote_node, adapter, remote_segment, 10, 0, &err);
+    }
+    while (err == SCI_ERR_TIMEOUT || err == SCI_ERR_NO_SUCH_SEGMENT); // FIXME: This is a bug in the SISCI API
+
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to connect to remote interrupt: %s", SCIGetErrorString(err));
+        goto error_close;
+    }
+
     log_debug("Trying to connect to remote segment %u on cluster node %u", remote_segment, remote_node);
     do
     {
-        SCIConnectSegment(list->sd, &list->remote_segment, remote_node, remote_node, adapter, NULL, NULL, 50, 0, &err);
+        SCIConnectSegment(list->sd, &list->remote_segment, remote_node, remote_segment, adapter, NULL, NULL, 50, 0, &err);
     }
     while (err == SCI_ERR_TIMEOUT || err == SCI_ERR_NO_SUCH_SEGMENT);
     
@@ -106,6 +119,7 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
     return 0;
 
 error_disconnect:
+    SCIDisconnectInterrupt(list->validate_irq, 0, &err);
     SCIDisconnectSegment(list->remote_segment, 0, &err);
 error_close:
     SCIClose(list->sd, 0, &err);
@@ -116,15 +130,9 @@ error_free:
 }
 
 
-
 void translist_delete(translist_t handle)
 {
     sci_error_t err = SCI_ERR_OK;
-
-    if (handle->entry_list_size > 0)
-    {
-        log_warn("Transfer list is not empty");
-    }
 
     if (handle->gpu_device_id != NO_GPU)
     {
@@ -133,6 +141,12 @@ void translist_delete(translist_t handle)
     else
     {
         free_ram_segment(handle->local_segment, handle->buf_mapping);
+    }
+
+    SCIDisconnectInterrupt(handle->validate_irq, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to disconnect remote interrupt: %s", SCIGetErrorString(err));
     }
 
     do
@@ -156,7 +170,6 @@ void translist_delete(translist_t handle)
 }
 
 
-
 translist_desc_t translist_desc(translist_t handle)
 {
     translist_desc_t info;
@@ -165,6 +178,7 @@ translist_desc_t translist_desc(translist_t handle)
     info.segment_local = handle->local_segment;
     info.segment_remote = handle->remote_segment;
     info.segment_size = handle->segment_size;
+    info.validate = handle->validate_irq;
     info.gpu_device_id = handle->gpu_device_id;
     info.buffer_ptr = handle->local_buf_ptr;
 
@@ -172,12 +186,10 @@ translist_desc_t translist_desc(translist_t handle)
 }
 
 
-
 size_t translist_size(translist_t handle)
 {
     return handle->entry_list_size;
 }
-
 
 
 int translist_element(translist_t handle, size_t idx, translist_entry_t* ptr)
@@ -191,7 +203,6 @@ int translist_element(translist_t handle, size_t idx, translist_entry_t* ptr)
     *ptr = handle->entry_list[idx];
     return 0;
 }
-
 
 
 int translist_insert(translist_t handle, size_t local_offs, size_t remote_offs, size_t size)

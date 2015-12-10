@@ -395,14 +395,14 @@ int main(int argc, char** argv)
             exit(1);
         }
 
-        translist_desc_t tsd = translist_descriptor(ts);
-        log_info("Remote segment size %lu %s", tsd.segment_size, local_segment_factor == 1e6 ? "MB" : "MiB");
+        translist_desc_t tsd = translist_desc(ts);
+        log_info("Remote segment size %.2f %s", tsd.segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
 
         // TODO: Make client accept many --size arguments and server only one (big)
         // --transfer=size:offset
         translist_insert(ts, 0, 0, tsd.segment_size);
 
-        client(mode, ts, repeat_count, local_segment_factor != 1e6);
+        client(local_adapter, mode, ts, repeat_count, local_segment_factor != 1e6);
 
         translist_delete(ts);
     }

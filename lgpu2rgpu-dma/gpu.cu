@@ -53,7 +53,7 @@ void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
 
 
 extern "C"
-size_t gpu_memcmp(int gpu, void* gpuptr, void* ramptr, size_t len)
+size_t gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 {
     cudaError_t err = cudaSetDevice(gpu);
     if (err != cudaSuccess)
@@ -82,9 +82,9 @@ size_t gpu_memcmp(int gpu, void* gpuptr, void* ramptr, size_t len)
     cudaDeviceSynchronize();
 
     size_t idx;
-    uint8_t* ptr = (uint8_t*) ramptr;
+    volatile uint8_t* ptr = (volatile uint8_t*) ramptr;
 
-    log_debug("Comparing GPU memory %p to RAM memory %p", gpuptr, ramptr);
+    log_debug("Comparing local GPU memory %p to remote memory %p", gpuptr, ramptr);
     for (idx = 0; idx < len; ++idx)
     {
         if (buf[idx] != ptr[idx])
@@ -190,3 +190,25 @@ void* gpu_devptr(int gpu, void* ptr)
     return attrs.devicePointer;
 }
 
+
+extern "C"
+void gpu_memcpy_buffer_to_local(int gpu, void* gpu_buf, void* ram_buf, size_t len)
+{
+    cudaError_t err = cudaSetDevice(gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+        return;
+    }
+
+    cudaDeviceSynchronize();
+
+    err = cudaMemcpy(ram_buf, gpu_buf, len, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to memcpy: %s", cudaGetErrorString(err));
+        return;
+    }
+
+    cudaDeviceSynchronize();
+}

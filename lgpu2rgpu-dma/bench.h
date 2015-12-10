@@ -30,6 +30,10 @@ typedef enum {
 uint64_t ts_usecs();
 
 
+/* Get a random byte value */
+uint8_t random_byte_value();
+
+
 /* Run benchmarking server 
  * 
  * This will block until stop_server() is invoked asynchronously (i.e. from an signal handler)
@@ -42,7 +46,7 @@ void stop_server();
 
 
 /* Run benchmark */
-void client(bench_mode_t benchmark_mode, translist_t transfer_list, int repeat, int iec_units);
+void client(unsigned adapter_no, bench_mode_t benchmark_mode, translist_t transfer_list, int repeat, int iec_units);
 
 #ifdef __cplusplus
 }

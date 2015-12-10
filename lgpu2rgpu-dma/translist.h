@@ -30,12 +30,14 @@ typedef struct {
 
 /* Define transfer list descriptor */
 typedef struct {
-    sci_desc_t              sisci_desc;     // SISCI API descriptor
-    sci_local_segment_t     segment_local;  // local segment handle
-    sci_remote_segment_t    segment_remote; // remote segment handle
-    size_t                  segment_size;   // size of the segment
-    int                     gpu_device_id;  // CUDA device ID
-    void*                   buffer_ptr;     // pointer to the local buffer
+    sci_desc_t                  sisci_desc;     // SISCI API descriptor
+    sci_local_segment_t         segment_local;  // local segment handle
+    sci_remote_segment_t        segment_remote; // remote segment handle
+    size_t                      segment_size;   // size of the segment
+    sci_remote_data_interrupt_t interrupt;      // data interrupt
+    sci_remote_interrupt_t      validate;       // remote validation interrupt
+    int                         gpu_device_id;  // CUDA device ID
+    void*                       buffer_ptr;     // pointer to the local buffer
 } translist_desc_t;
 
 

@@ -175,7 +175,7 @@ const char* SCIGetErrorString(sci_error_t code)
 
 bench_mode_t bench_mode_from_name(const char* str)
 {
-    for (size_t i = 0; i < sizeof(all_benchmarking_modes) / sizeof(all_benchmarking_modes[0]); ++i)
+    for (size_t i = 0; i < sizeof(all_benchmarking_modes) / sizeof(all_benchmarking_modes[0]) && bench_names[i] != NULL; ++i)
     {
         if (strcmp(str, bench_names[i]) == 0)
         {

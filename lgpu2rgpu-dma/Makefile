@@ -1,5 +1,5 @@
 PROJECT := $(notdir $(shell pwd))
-OBJECTS	:= main.o translist.o reporting.o util.o gpu.o bench.o
+OBJECTS	:= main.o translist.o reporting.o util.o gpu.o ram.o bench.o client.o server.o
 
 CC	:= gcc
 NVCC 	:= /usr/local/cuda/bin/nvcc
