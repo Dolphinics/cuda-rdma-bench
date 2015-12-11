@@ -1,8 +1,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sisci_api.h>
 #include "reporting.h"
+#include "translist.h"
+#include "common.h"
+#include "gpu.h"
 
 
 #define BUFLEN 1024
@@ -98,4 +102,31 @@ void log_debug(const char* frmt, ...)
         fflush(stderr);
     }
 
+}
+
+
+void report_bandwidth(FILE* fp, translist_t tl, size_t num, double* runs, double total, int iec)
+{
+    translist_desc_t td = translist_desc(tl);
+    gpu_info_t info;
+    
+    fprintf(fp, "=== BENCHMARK  SUMMARY ===\n");
+    fprintf(fp, "size: %lu bytes\n", td.segment_size);
+    if (td.gpu_device_id != NO_GPU)
+    {
+        gpu_info(td.gpu_device_id, &info);
+        fprintf(fp, "gpu : %s (%02x:%02x:%x)\n", info.name, info.domain, info.bus, info.device);
+    }
+    else
+    {
+        fprintf(fp, "gpu : N/A\n");
+    }
+    fprintf(fp, " len: %lu vector entries\n", translist_size(tl));
+
+    fprintf(fp, "===  BANDWIDTH REPORT  ===\n");
+    for (size_t run = 0; run < num; ++run)
+    {
+        fprintf(fp, "%3lu %14.3f %-5s\n", run + 1, runs[run], iec ? "MiB/s" : "MB/s");        
+    }
+    fprintf(fp, "avg %14.3f %-5s\n", total, iec ? "MiB/s" : "MB/s");
 }

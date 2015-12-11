@@ -52,7 +52,13 @@ sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t irq,
             byte = *((uint8_t*) bi->ptr);
         }
 
-        fprintf(stdout, "Old value: %02x, new value: %02x\n", bi->val, byte);
+        fprintf(stdout, 
+                "******* BUFFER *******\n"
+                " Before transfer:  %02x\n"
+                "  After transfer:  %02x\n"
+                "**********************\n", 
+                bi->val, byte);
+
         bi->val = byte;
     }
 

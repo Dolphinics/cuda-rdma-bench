@@ -7,6 +7,25 @@ extern "C" {
 #include <stdlib.h>
 #include <stdint.h>
 
+/* GPU info descriptor */
+typedef struct {
+    int     id;         // CUDA device ID
+    char    name[256];  // CUDA device name
+    int     domain;     // PCI domain
+    int     bus;        // PCI bus
+    int     device;     // PCI device
+} gpu_info_t;
+
+
+/* Get the GPU info for a given GPU
+ *
+ * gpu_device_id        - the local GPU id
+ * info                 - is set to the GPU info on success
+ *
+ * Returns 1 and sets info on success, 0 on error
+ */
+int gpu_info(int gpu_device_id, gpu_info_t* info);
+
 
 /* Allocate GPU device buffer
  *

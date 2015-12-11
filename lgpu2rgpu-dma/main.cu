@@ -52,6 +52,7 @@ static void list_bench_modes()
 /* List local GPUs */
 static void list_gpu_devices(size_t size_factor)
 {
+    // TODO rewrite this to use gpu_info instead and extend gpu_info_t
     cudaError_t err;
 
     int gpu_device_count = 0;
@@ -164,7 +165,7 @@ int main(int argc, char** argv)
     size_t local_segment_count = 0;
     size_t local_segment_factor = 1e6;
 
-    int repeat_count = 1;
+    size_t repeat_count = 1;
     bench_mode_t mode = BENCH_DO_NOTHING;
 
     /* Do shortcut */
@@ -270,8 +271,8 @@ int main(int argc, char** argv)
 
             case 'c': // set repeat count
                 str = NULL;
-                repeat_count = strtol(optarg, &str, 10);
-                if (str == NULL || *str != '\0' || repeat_count <= 0)
+                repeat_count = strtoul(optarg, &str, 10);
+                if (str == NULL || *str != '\0' || repeat_count == 0)
                 {
                     log_error("Argument %s must be at least 1", argv[optind-1]);
                     exit('c');
@@ -402,13 +403,19 @@ int main(int argc, char** argv)
         // --transfer=size:offset
         //translist_insert(ts, 0, 0, tsd.segment_size);
 
-        size_t n = 10;
+        // FIXME HACK
+        size_t n = 20;
         for (size_t i = 0; i < n; ++i)
         {
             translist_insert(ts, 0, 0, tsd.segment_size);
         }
 
-        client(local_adapter, mode, ts, repeat_count, local_segment_factor != 1e6);
+        double runs[repeat_count];
+        double average = client(local_adapter, mode, ts, repeat_count, runs); // TODO: pass in one array for times and one for sizes
+        log_info("Average bandwidth: %.2f %-5s", average, local_segment_factor == 1e6 ? "MB/s" : "MiB/s");
+
+        report_bandwidth(stdout, ts, repeat_count, runs, average, local_segment_factor != 1e6);
+        // TODO report_latency(
 
         translist_delete(ts);
     }

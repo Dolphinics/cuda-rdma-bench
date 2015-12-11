@@ -49,19 +49,21 @@ static int verify_transfer(translist_desc_t* desc)
 }
 
 
-void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags, int repeat, int iec)
+double dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags, size_t repeat, double* runs)
 {
     sci_error_t err;
     sci_dma_queue_t q;
     size_t veclen = translist_size(tl);
 
+    // Create DMA queue
     SCICreateDMAQueue(tsd->sisci_desc, &q, adapter, 1, 0, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create DMA queue");
-        return;
+        return 0;
     }
 
+    // Create DMA transfer vector
     dis_dma_vec_t vec[veclen];
     size_t total_size = 0;
     for (size_t i = 0; i < veclen; ++i)
@@ -77,18 +79,24 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
         total_size += entry.size;
     }
 
-    uint64_t start, end;
-
-    start = ts_usecs();
-    for (int i = 0; i < repeat; ++i)
+    // Do DMA transfer
+    log_debug("Performing DMA transfer of %lu-sized vector  %d times", veclen, repeat);
+    uint64_t start = ts_usecs();
+    for (size_t i = 0; i < repeat; ++i)
     {
+        uint64_t before = ts_usecs();
         SCIStartDmaTransferVec(q, tsd->segment_local, tsd->segment_remote, veclen, vec, NULL, NULL, SCI_FLAG_DMA_WAIT | flags, &err);
+        uint64_t after = ts_usecs();
+
+        runs[i] = (double) total_size / (double) (after - before);
+
         if (err != SCI_ERR_OK)
         {
             log_error("DMA transfer failed %s", SCIGetErrorString(err));
+            runs[i] = 0.0;
         }
     }
-    end = ts_usecs();
+    uint64_t end = ts_usecs();
 
     SCIRemoveDMAQueue(q, 0, &err);
     if (err != SCI_ERR_OK)
@@ -101,11 +109,11 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
     megabytes_per_sec *= repeat;
     megabytes_per_sec /= end - start;
 
-    fprintf(stdout, "%.2f %s\n", megabytes_per_sec, iec ? "MiB/s" : "MB/s");
+    return megabytes_per_sec;
 }
 
 
-void client(unsigned adapter, bench_mode_t mode, translist_t tl, int repeat, int use_iec)
+double client(unsigned adapter, bench_mode_t mode, translist_t tl, size_t repeat, double* runs)
 {
     translist_desc_t tl_desc = translist_desc(tl);
 
@@ -122,22 +130,29 @@ void client(unsigned adapter, bench_mode_t mode, translist_t tl, int repeat, int
         ram_memset(tl_desc.buffer_ptr, tl_desc.segment_size, byte);
     }
 
-    unsigned sci_flags = 0;
+    // Initialize benchmark variables
+    double total = 0.0;
+    for (size_t i = 0; i < repeat; ++i)
+    {
+        runs[i] = 0.0;
+    }
 
     // Do benchmark
+    log_info("Executing benchmark...");
+    unsigned sci_flags = 0;
     switch (mode)
     {
         case BENCH_SCI_DMA_GLOBAL_PUSH_TO_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
         case BENCH_SCI_DMA_PUSH_TO_REMOTE:
-            dma(adapter, tl, &tl_desc, sci_flags, repeat, use_iec);
+            total = dma(adapter, tl, &tl_desc, sci_flags, repeat, runs);
             break;
 
         case BENCH_SCI_DMA_GLOBAL_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
         case BENCH_SCI_DMA_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_READ;
-            dma(adapter, tl, &tl_desc, sci_flags, repeat, use_iec);
+            total = dma(adapter, tl, &tl_desc, sci_flags, repeat, runs);
             break;
 
         default:
@@ -148,6 +163,7 @@ void client(unsigned adapter, bench_mode_t mode, translist_t tl, int repeat, int
             log_error("No benchmarking operation is set");
             break;
     }
+    log_info("Benchmark complete, verifying transfer.");
 
     // Verify transfer
     sci_error_t err;
@@ -168,7 +184,12 @@ void client(unsigned adapter, bench_mode_t mode, translist_t tl, int repeat, int
         value = *((uint8_t*) tl_desc.buffer_ptr);
     }
 
-    fprintf(stdout, "Old value: %02x, new value: %02x\n", byte, value);
+    fprintf(stderr, 
+            "******* BUFFER *******\n"
+            " Before transfer:  %02x\n"
+            "  After transfer:  %02x\n"
+            "**********************\n", 
+            byte, value);
 
     if (verify_transfer(&tl_desc) != 1)
     {
@@ -178,4 +199,6 @@ void client(unsigned adapter, bench_mode_t mode, translist_t tl, int repeat, int
     {
         log_debug("Local and remote buffers are equal");
     }
+
+    return total;
 }

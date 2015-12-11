@@ -46,7 +46,7 @@ void stop_server();
 
 
 /* Run benchmark */
-void client(unsigned adapter_no, bench_mode_t benchmark_mode, translist_t transfer_list, int repeat, int iec_units);
+double client(unsigned adapter_no, bench_mode_t benchmark_mode, translist_t transfer_list, size_t num_runs, double* runs_result);
 
 #ifdef __cplusplus
 }

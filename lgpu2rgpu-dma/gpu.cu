@@ -2,6 +2,7 @@
 #include <sisci_api.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include "gpu.h"
 #include "reporting.h"
 
@@ -22,7 +23,6 @@ __global__ void gpu_memset_kernel(void* buf, size_t len, uint8_t val)
 
     __syncthreads();
 }
-
 
 
 extern "C"
@@ -49,7 +49,6 @@ void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
 
     cudaDeviceSynchronize();
 }
-
 
 
 extern "C"
@@ -99,7 +98,6 @@ size_t gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 }
 
 
-
 extern "C"
 int gpu_device_count()
 {
@@ -115,7 +113,6 @@ int gpu_device_count()
 
     return count;
 }
-
 
 
 extern "C"
@@ -141,7 +138,6 @@ void* gpu_malloc(int gpu, size_t len)
 }
 
 
-
 extern "C"
 void gpu_free(int gpu, void* ptr)
 {
@@ -149,7 +145,6 @@ void gpu_free(int gpu, void* ptr)
     cudaSetDevice(gpu);
     cudaFree(ptr);
 }
-
 
 
 extern "C"
@@ -164,7 +159,6 @@ void devptr_set_sync_memops(void* dev_ptr)
         log_error("Failed to set pointer attribute CU_POINTER_ATTRIBYTE_SYNC_MEMOPS");
     }
 }
-
 
 
 extern "C"
@@ -211,4 +205,27 @@ void gpu_memcpy_buffer_to_local(int gpu, void* gpu_buf, void* ram_buf, size_t le
     }
 
     cudaDeviceSynchronize();
+}
+
+
+extern "C"
+int gpu_info(int gpu, gpu_info_t* info)
+{
+    cudaError_t err;
+    cudaDeviceProp prop;
+
+    err = cudaGetDeviceProperties(&prop, gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Unknown GPU: %s", cudaGetErrorString(err));
+        return 0;
+    }
+
+    info->id = gpu;
+    strncpy(info->name, prop.name, 256);
+    info->domain = prop.pciBusID;
+    info->bus = prop.pciDomainID;
+    info->device = prop.pciDeviceID;
+
+    return 1;
 }

@@ -20,3 +20,4 @@ uint8_t random_byte_value()
     srand(ts_usecs());
     return rand() & 0xff;
 }
+

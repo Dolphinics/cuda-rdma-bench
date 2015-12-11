@@ -4,9 +4,10 @@
 extern "C" {
 #endif
 
-#include <sisci_api.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include "translist.h"
+#include <stdlib.h>
 
 extern unsigned verbosity;
 
@@ -17,6 +18,8 @@ void log_warn(const char* format, ...);
 void log_error(const char* format, ...);
 
 void log_debug(const char* format, ...);
+
+void report_bandwidth(FILE* file, translist_t trans_list, size_t num_runs, double* runs, double avg, int iec_units);
 
 #ifdef __cplusplus
 }
