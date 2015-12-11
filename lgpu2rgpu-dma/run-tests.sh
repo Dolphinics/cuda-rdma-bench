@@ -16,10 +16,10 @@ repeats=20
 modes="dma-push dma-pull"
 gpus="0 1"
 
-echo > $filename
+cat /proc/cmdline > $filename
 
 for gpu in $gpus; do
-	echo "remote gpu $gpu" >> $filename
+	echo "REMOTE GPU $gpu" >> $filename
 	ssh $remote_host "killall lgpu2rgpu-dma"
 	ssh -f $remote_host "./lgpu2rgpu-dma --size=$segment_size -i --gpu=$gpu" 
 
@@ -31,7 +31,7 @@ for gpu in $gpus; do
 		for gpu2 in $gpus; do
 			echo >> $filename
 			echo "gpu $gpu2 mode $mode" >> $filename
-			./lgpu2rgpu-dma --remote-node=$remote_node -i -c $repeats --bench=$mode >> $filename
+			./lgpu2rgpu-dma --remote-node=$remote_node -i -c $repeats --bench=$mode --gpu=$gpu2 >> $filename
 		done
 	done
 	
@@ -40,7 +40,8 @@ for gpu in $gpus; do
 	echo >> $filename
 done
 
-echo "remote ram" >> $filename
+
+echo "REMOTE RAM" >> $filename
 ssh $remote_host "killall lgpu2rgpu-dma"
 ssh -f $remote_host "./lgpu2rgpu-dma --size=$segment_size -i" 
 
@@ -52,7 +53,7 @@ for mode in $modes; do
 	for gpu2 in $gpus; do
 		echo >> $filename
 		echo "gpu $gpu2 mode $mode" >> $filename
-		./lgpu2rgpu-dma --remote-node=$remote_node -i -c $repeats --bench=$mode >> $filename
+		./lgpu2rgpu-dma --remote-node=$remote_node -i -c $repeats --bench=$mode --gpu=$gpu2 >> $filename
 	done
 done
 
