@@ -23,6 +23,7 @@ static int verify_transfer(translist_desc_t* desc)
         return -1;
     }
 
+    log_info("Comparing local and remote memory...");
     size_t bytes;
     if (desc->gpu_device_id != NO_GPU)
     {

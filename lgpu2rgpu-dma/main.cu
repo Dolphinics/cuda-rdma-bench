@@ -345,7 +345,7 @@ int main(int argc, char** argv)
             log_error("Segment size is too large");
             exit(1);
         }
-        log_info("Segment size is set to %lu %s", local_segment_factor * local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
+        log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
 
         if (mode != BENCH_DO_NOTHING)
         {
@@ -400,7 +400,13 @@ int main(int argc, char** argv)
 
         // TODO: Make client accept many --size arguments and server only one (big)
         // --transfer=size:offset
-        translist_insert(ts, 0, 0, tsd.segment_size);
+        //translist_insert(ts, 0, 0, tsd.segment_size);
+
+        size_t n = 10;
+        for (size_t i = 0; i < n; ++i)
+        {
+            translist_insert(ts, 0, 0, tsd.segment_size);
+        }
 
         client(local_adapter, mode, ts, repeat_count, local_segment_factor != 1e6);
 
