@@ -414,7 +414,7 @@ int main(int argc, char** argv)
         double average = client(local_adapter, mode, ts, repeat_count, runs); // TODO: pass in one array for times and one for sizes
         log_info("Average bandwidth: %.2f %-5s", average, local_segment_factor == 1e6 ? "MB/s" : "MiB/s");
 
-        report_bandwidth(stdout, ts, repeat_count, runs, average, local_segment_factor != 1e6);
+        report_bandwidth(stdout, mode, ts, repeat_count, runs, average, local_segment_factor != 1e6);
         // TODO report_latency(
 
         translist_delete(ts);

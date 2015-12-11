@@ -7,6 +7,7 @@
 #include "translist.h"
 #include "common.h"
 #include "gpu.h"
+#include "util.h"
 
 
 #define BUFLEN 1024
@@ -105,12 +106,13 @@ void log_debug(const char* frmt, ...)
 }
 
 
-void report_bandwidth(FILE* fp, translist_t tl, size_t num, double* runs, double total, int iec)
+void report_bandwidth(FILE* fp, bench_mode_t mode, translist_t tl, size_t num, double* runs, double total, int iec)
 {
     translist_desc_t td = translist_desc(tl);
     gpu_info_t info;
     
     fprintf(fp, "=== BENCHMARK  SUMMARY ===\n");
+    fprintf(fp, "type: %s\n", bench_mode_name(mode));
     fprintf(fp, "size: %lu bytes\n", td.segment_size);
     if (td.gpu_device_id != NO_GPU)
     {
