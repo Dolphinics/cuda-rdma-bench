@@ -1,0 +1,27 @@
+1) Make client only output buffer on reads and only trigger interrupt on writes
+
+2) Make buffer output and verification optional --verify (needs "re-lettering"
+   for args)
+
+3) Restructure repo, give everything new names, rewrite lgpu2lgpu-p2p to be
+   stand-alone and delete shared
+
+4) Add more fine-grained control to benchmarking, make it report latency as
+   well
+   	- benchmark result (bench_result_t) containing test parameters?
+	- report_bandwidth()
+	- report_latency()
+
+5) Implement more benchmark modes
+
+6) Go through source code and be more consistent in naming and in comments and
+   argument passing
+	- bench_mode_t => bench_op_t, operation
+	- int translist_info(translist_info_t* info);
+	- buffer => buf ?
+	- pointer => ptr ?
+	- device => dev ?
+	- physical mem / ioaddr / device mem
+	- mem ptr vs buf ptr etc
+
+7) make GPU descriptor type? or GPU memory descriptor type?

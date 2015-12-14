@@ -111,7 +111,7 @@ void report_bandwidth(FILE* fp, bench_mode_t mode, translist_t tl, size_t num, d
     translist_desc_t td = translist_desc(tl);
     gpu_info_t info;
     
-    fprintf(fp, "=== BENCHMARK  SUMMARY ===\n");
+    fprintf(fp, "========= BENCHMARK =========\n");
     fprintf(fp, "reps: %lu\n", num);
     fprintf(fp, "type: %s\n", bench_mode_name(mode));
     fprintf(fp, "size: %lu bytes\n", td.segment_size);
@@ -124,12 +124,12 @@ void report_bandwidth(FILE* fp, bench_mode_t mode, translist_t tl, size_t num, d
     {
         fprintf(fp, "gpu : N/A\n");
     }
-    fprintf(fp, " len: %lu vector entries\n", translist_size(tl));
+    fprintf(fp, "len : %lu vector entries\n", translist_size(tl));
 
-    fprintf(fp, "===  BANDWIDTH REPORT  ===\n");
+    fprintf(fp, "========= BANDWIDTH =========\n");
     for (size_t run = 0; run < num; ++run)
     {
-        fprintf(fp, "%3lu %14.3f %-5s\n", run + 1, runs[run], iec ? "MiB/s" : "MB/s");        
+        fprintf(fp, "%3lu %16.3f %-5s\n", run + 1, runs[run], iec ? "MiB/s" : "MB/s");        
     }
-    fprintf(fp, "avg %14.3f %-5s\n", total, iec ? "MiB/s" : "MB/s");
+    fprintf(fp, "avg %16.3f %-5s\n", total, iec ? "MiB/s" : "MB/s");
 }
