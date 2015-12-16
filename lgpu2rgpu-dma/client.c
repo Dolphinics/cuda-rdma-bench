@@ -49,7 +49,7 @@ static int verify_transfer(translist_desc_t* desc)
 }
 
 
-double dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags, size_t repeat, double* runs)
+void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags, size_t repeat, result_t* result)
 {
     sci_error_t err;
     sci_dma_queue_t q;
@@ -60,12 +60,12 @@ double dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned fla
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create DMA queue");
-        return 0;
+        return;
     }
 
     // Create DMA transfer vector
     dis_dma_vec_t vec[veclen];
-    size_t total_size = 0;
+
     for (size_t i = 0; i < veclen; ++i)
     {
         translist_entry_t entry;
@@ -76,11 +76,14 @@ double dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned fla
         vec[i].remote_offset = entry.offset_remote;
         vec[i].flags = 0;
 
-        total_size += entry.size;
+        result->total_size += entry.size;
     }
 
     // Do DMA transfer
     log_debug("Performing DMA transfer of %lu-sized vector  %d times", veclen, repeat);
+    result->total_runtime = 0;
+    result->success_count = 0;
+
     uint64_t start = ts_usecs();
     for (size_t i = 0; i < repeat; ++i)
     {
@@ -88,34 +91,33 @@ double dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned fla
         SCIStartDmaTransferVec(q, tsd->segment_local, tsd->segment_remote, veclen, vec, NULL, NULL, SCI_FLAG_DMA_WAIT | flags, &err);
         uint64_t after = ts_usecs();
 
-        runs[i] = (double) total_size / (double) (after - before);
+        result->runtimes[i] = after - before;
 
         if (err != SCI_ERR_OK)
         {
             log_error("DMA transfer failed %s", SCIGetErrorString(err));
-            runs[i] = 0.0;
+            result->runtimes[i] = 0;
+            continue;
         }
+
+        result->success_count++;
     }
     uint64_t end = ts_usecs();
 
+    result->total_runtime = end - start;
+
+    // Clean up and quit
     SCIRemoveDMAQueue(q, 0, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to remove DMA queue");
     }
-
-    // Try to prevent overflowing
-    double megabytes_per_sec = (double) total_size;
-    megabytes_per_sec *= repeat;
-    megabytes_per_sec /= end - start;
-
-    return megabytes_per_sec;
 }
 
 
-double client(unsigned adapter, bench_mode_t mode, translist_t tl, size_t repeat, double* runs)
+int client(unsigned adapter, const bench_t* benchmark, result_t* result)
 {
-    translist_desc_t tl_desc = translist_desc(tl);
+    translist_desc_t tl_desc = translist_desc(benchmark->transfer_list);
 
     // Fill local buffer with random byte
     uint8_t byte = random_byte_value();
@@ -130,50 +132,60 @@ double client(unsigned adapter, bench_mode_t mode, translist_t tl, size_t repeat
         ram_memset(tl_desc.buffer_ptr, tl_desc.segment_size, byte);
     }
 
-    // Initialize benchmark variables
-    double total = 0.0;
-    for (size_t i = 0; i < repeat; ++i)
+    // Blank out benchmark results
+    result->total_runtime = 0;
+    result->success_count = 0;
+    result->buffer_matches = 0;
+    result->total_size = 0;
+    for (size_t i = 0; i < benchmark->num_runs; ++i)
     {
-        runs[i] = 0.0;
+        result->runtimes[i] = 0;
     }
 
     // Do benchmark
-    log_info("Executing benchmark...");
+    int fetch_data = 0;
     unsigned sci_flags = 0;
-    switch (mode)
+
+    log_info("Executing benchmark...");
+    switch (benchmark->benchmark_mode)
     {
         case BENCH_SCI_DMA_GLOBAL_PUSH_TO_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
         case BENCH_SCI_DMA_PUSH_TO_REMOTE:
-            total = dma(adapter, tl, &tl_desc, sci_flags, repeat, runs);
+            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
             break;
 
         case BENCH_SCI_DMA_GLOBAL_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
         case BENCH_SCI_DMA_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_READ;
-            total = dma(adapter, tl, &tl_desc, sci_flags, repeat, runs);
+            fetch_data = 1;
+            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
             break;
 
         default:
-            log_error("%s is not yet supported", bench_mode_name(mode));
-            break;
+            log_error("%s is not yet supported", bench_mode_name(benchmark->benchmark_mode));
+            return -2;
 
         case BENCH_DO_NOTHING:
-            log_error("No benchmarking operation is set");
-            break;
+            log_error("No benchmark type is set");
+            return -1;
     }
     log_info("Benchmark complete, verifying transfer.");
 
-    // Verify transfer
-    sci_error_t err;
-    
-    SCITriggerInterrupt(tl_desc.validate, 0, &err);
-    if (err != SCI_ERR_OK)
+    // Trigger remote interrupt to make remote host check its buffer
+    if (!fetch_data)
     {
-        log_error("Failed to trigger remote interrupt");
+        sci_error_t err;
+
+        SCITriggerInterrupt(tl_desc.validate, 0, &err);
+        if (err != SCI_ERR_OK)
+        {
+            log_error("Failed to trigger remote interrupt");
+        }
     }
 
+    // Verify transfer by comparing local and remote buffer
     uint8_t value;
     if (tl_desc.gpu_device_id != NO_GPU)
     {
@@ -184,21 +196,21 @@ double client(unsigned adapter, bench_mode_t mode, translist_t tl, size_t repeat
         value = *((uint8_t*) tl_desc.buffer_ptr);
     }
 
-    fprintf(stderr, 
-            "******* BUFFER *******\n"
-            " Before transfer:  %02x\n"
-            "  After transfer:  %02x\n"
-            "**********************\n", 
-            byte, value);
-
+    if (fetch_data)
+    {
+        report_buffer_change(stderr, byte, value);
+    }
+    
     if (verify_transfer(&tl_desc) != 1)
     {
-        log_warn("Local and remote buffers differ");
+        log_warn("Local and remote buffers differ!");
+        result->buffer_matches = 0;
     }
     else
     {
         log_debug("Local and remote buffers are equal");
+        result->buffer_matches = 1;
     }
 
-    return total;
+    return 0;
 }

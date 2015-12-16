@@ -21,21 +21,24 @@ static struct option options[] = {
     { .name = "remote-id", .has_arg = 1, .flag = NULL, .val = 'r' },
     { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
     { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 'g' },
-    { .name = "type", .has_arg = 1, .flag = NULL, .val = 'b' },
-    { .name = "bench", .has_arg = 1, .flag = NULL, .val = 'b' },
-    { .name = "benchmark", .has_arg = 1, .flag = NULL, .val = 'b' },
+    { .name = "type", .has_arg = 1, .flag = NULL, .val = 't' },
+    { .name = "bench", .has_arg = 1, .flag = NULL, .val = 't' },
+    { .name = "benchmark", .has_arg = 1, .flag = NULL, .val = 't' },
+    { .name = "test", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "count", .has_arg = 1, .flag = NULL, .val = 'c' },
     { .name = "verbose", .has_arg = 0, .flag = NULL, .val = 'v' },
     { .name = "iec", .has_arg = 0, .flag = NULL, .val = 'i' },
+    { .name = "vec", .has_arg = 1, .flag = NULL, .val = 'V'},
+    { .name = "len", .has_arg = 1, .flag = NULL, .val = 'L' },
     { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
     { .name = NULL, .has_arg = 0, .flag = NULL, .val = 0 }
 };
 
 
-/* List supported benchmarking modes */
+/* List supported benchmark types */
 static void list_bench_modes()
 {
-    fprintf(stderr, "Benchmarking operations\n");
+    fprintf(stderr, "Benchmark types\n");
     fprintf(stderr, "  %-18s  %-56s\n", "name", "explanation");
 
     const bench_mode_t* mode = all_benchmarking_modes;
@@ -130,24 +133,26 @@ static void give_usage(const char* progname)
 {
     fprintf(stderr,
             "Usage: %s --size=<size>\n"
-            "   or: %s --remote-node=<node id> --mode=<benchmark type>\n"
+            "   or: %s --remote-node=<node id> --type=<benchmark type>\n"
             "\nDescription\n"
             "    Benchmark how long it takes to transfer memory between a local and a\n"
             "    remote segment across an NTB link.\n"
-            "\nServer arguments\n"
+            "\nServer mode arguments\n"
             "  --size=<size>            memory size in MB (or MiB if --iec is set)\n"
-            "\nClient arguments\n"
+            "\nClient mode arguments\n"
             "  --remote-node=<node id>  remote cluster node ID\n"
-            "  --bench=<bencmark type>  specify benchmarking operation\n"
-            "  --count=<number>         number of times to repeat test\n"
-            "\nOptional arguments (both client and server)\n"
+            "  --type=<bencmark type>   specify benchmark type\n"
+            "  --count=<number>         number of times to repeat test (defaults to 1)\n"
+            "  --vec=<number>           divide segment into a number of DMA vector elements (defaults to 1)\n"
+            "  --len=<number>           repeat the entire vector a number of times (defaults to 10)\n"
+            "  --remote-id=<segment id> number identifying the remote segment\n"
+            "\nOptional arguments (both client and server mode)\n"
             "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
             "  --local-id=<segment id>  number identifying the local segment\n"
-            "  --remote-id=<segment id> number identifying the remote segment\n"
             "  --gpu=<gpu id>           specify a local GPU to use\n"
             "  --verbose                increase verbosity level\n"
             "  --iec                    use IEC units (1024) instead of SI units (1000)\n"
-            "  --help                   show list of local GPUs and benchmarking operations\n"
+            "  --help                   show list of local GPUs and benchmark types\n"
             , progname, progname);
 }
 
@@ -165,6 +170,9 @@ int main(int argc, char** argv)
     size_t local_segment_count = 0;
     size_t local_segment_factor = 1e6;
 
+    size_t vec_div = 1;
+    size_t vec_len = 10;
+
     size_t repeat_count = 1;
     bench_mode_t mode = BENCH_DO_NOTHING;
 
@@ -179,7 +187,7 @@ int main(int argc, char** argv)
     int opt, idx;
     char* str;
 
-    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:vih", options, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:viVLh", options, &idx)) != -1)
     {
         switch (opt)
         {
@@ -260,11 +268,11 @@ int main(int argc, char** argv)
                 }
                 break;
 
-            case 'b': // set benchmark mode
+            case 't': // set benchmark type
                 mode = bench_mode_from_name(optarg);
                 if (mode == BENCH_DO_NOTHING)
                 {
-                    log_error("Argument %s must be a valid benchmarking mode", argv[optind-1]);
+                    log_error("Argument %s must be a valid benchmark type", argv[optind-1]);
                     exit('m');
                 }
                 break;
@@ -287,6 +295,26 @@ int main(int argc, char** argv)
                 log_debug("Using IEC units");
                 local_segment_factor = 1 << 20;
                 break;
+
+            case 'V': // set DMA vector element length
+                str = NULL;
+                vec_div = strtoul(optarg, &str, 0);
+                if (str != NULL || *str != '\0' || vec_div == 0)
+                {
+                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    exit('V');
+                }
+                break;
+
+            case 'L': // set DMA vector length
+                str = NULL;
+                vec_len = strtoul(optarg, &str, 10);
+                if (str != NULL || *str != '\0' || vec_len == 0)
+                {
+                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    exit('L');
+                }
+                break;
         }
     }
 
@@ -299,7 +327,7 @@ int main(int argc, char** argv)
     }
     if (remote_node_id != NO_NODE && mode == BENCH_DO_NOTHING)
     {
-        log_error("No benchmarking operation is specified");
+        log_error("No benchmark type is specified");
         give_usage(argv[0]);
         exit(1);
     }
@@ -338,24 +366,30 @@ int main(int argc, char** argv)
         log_info("GPU segment is specified");
     }
 
-    // Run as client or server
+    /* Run as client or server */
     if (remote_node_id == NO_NODE)
     {
         if (local_segment_count >= MAX_SIZE || local_segment_factor * local_segment_count >= MAX_SIZE)
         {
             log_error("Segment size is too large");
+            SCITerminate();
             exit(1);
         }
         log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
 
         if (mode != BENCH_DO_NOTHING)
         {
-            log_warn("Setting benchmarking operation has no effect in server mode");
+            log_warn("Setting benchmark type has no effect in server mode");
         }
 
         if (repeat_count != 1)
         {
-            log_warn("Setting repeat count has no effect in server mode");
+            log_warn("Setting benchmark repeat count has no effect in server mode");
+        }
+
+        if (vec_len != 10 || vec_div != 1)
+        {
+            log_warn("Tweaking DMA vector has no effect in server mode");
         }
 
         if (local_segment_id == NO_ID)
@@ -393,30 +427,66 @@ int main(int argc, char** argv)
         if (translist_create(&ts, local_adapter, local_segment_id, remote_node_id, remote_segment_id, local_gpu_id) != 0)
         {
             log_error("Unexpected error when creating transfer list, aborting...");
+            SCITerminate();
             exit(1);
         }
 
         translist_desc_t tsd = translist_desc(ts);
-        log_info("Remote segment size %.2f %s", tsd.segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
-
-        // TODO: Make client accept many --size arguments and server only one (big)
-        // --transfer=size:offset
-        //translist_insert(ts, 0, 0, tsd.segment_size);
-
-        // FIXME HACK
-        size_t n = 20;
-        for (size_t i = 0; i < n; ++i)
+        size_t segment_size = tsd.segment_size;
+        log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
+            
+        if (vec_div >= segment_size || segment_size / vec_div == 0)
         {
-            translist_insert(ts, 0, 0, tsd.segment_size);
+            log_error("Number of DMA vector entries is larger than segment size");
+            translist_delete(ts);
+            SCITerminate();
+            exit(1);
         }
 
-        double runs[repeat_count];
-        double average = client(local_adapter, mode, ts, repeat_count, runs); // TODO: pass in one array for times and one for sizes
-        log_info("Average bandwidth: %.2f %-5s", average, local_segment_factor == 1e6 ? "MB/s" : "MiB/s");
+        /* Create transfer list */
+        size_t entry_size = segment_size / vec_div;
 
-        report_bandwidth(stdout, mode, ts, repeat_count, runs, average, local_segment_factor != 1e6);
-        // TODO report_latency(
+        for (size_t k = 0; k < vec_len; ++k)
+        {
+            for (size_t v = 0; v < vec_div; ++v)
+            {
+                if (translist_insert(ts, v * entry_size, v * entry_size, entry_size) != 0)
+                {
+                    log_error("Failed to create transfer list");
+                    break;
+                }
+            }
+        }
 
+        /* Create and run benchmark */
+        bench_t bench_conf = {
+            .benchmark_mode = mode,
+            .num_runs = repeat_count,
+            .transfer_list = ts
+        };
+
+        result_t* result = (result_t*) malloc(sizeof(result_t) + sizeof(uint64_t) * repeat_count);
+        if (result == NULL)
+        {
+            log_error("Out of resources");
+            translist_delete(ts);
+            SCITerminate();
+            exit(1);
+        }
+
+        if (client(local_adapter, &bench_conf, result) == 0)
+        {
+            log_info("Total runtime is %.2f s", result->total_runtime / 1e6l);
+            log_info("Avg bandwidth is %.2f %-5s", (double) (result->total_size * repeat_count) / (double) result->total_runtime, local_segment_factor == 1e6 ? "MB/s" : "MiB/s");
+            report_summary(stdout, &bench_conf, result, local_segment_factor != 1e6);
+            report_bandwidth(stdout, &bench_conf, result, local_segment_factor != 1e6);
+        }
+        else
+        {
+            log_warn("Benchmark failed, skipping results");
+        }
+
+        free(result);
         translist_delete(ts);
     }
 

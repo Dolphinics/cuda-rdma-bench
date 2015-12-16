@@ -7,6 +7,7 @@ extern "C" {
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "translist.h"
 #include "bench.h"
 
@@ -20,7 +21,11 @@ void log_error(const char* format, ...);
 
 void log_debug(const char* format, ...);
 
-void report_bandwidth(FILE* file, bench_mode_t type, translist_t trans_list, size_t num_runs, double* runs, double avg, int iec_units);
+void report_buffer_change(FILE* file, uint8_t old_value, uint8_t new_value);
+
+void report_summary(FILE* file, const bench_t* benchmark, const result_t* result, int iec_units);
+
+void report_bandwidth(FILE* file, const bench_t* benchmark, const result_t* result, int iec_units);
 
 #ifdef __cplusplus
 }

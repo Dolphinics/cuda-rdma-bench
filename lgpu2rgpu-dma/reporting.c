@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <sisci_api.h>
 #include "reporting.h"
 #include "translist.h"
@@ -106,30 +107,96 @@ void log_debug(const char* frmt, ...)
 }
 
 
-void report_bandwidth(FILE* fp, bench_mode_t mode, translist_t tl, size_t num, double* runs, double total, int iec)
+
+void report_buffer_change(FILE* fp, uint8_t old, uint8_t new)
 {
-    translist_desc_t td = translist_desc(tl);
-    gpu_info_t info;
-    
-    fprintf(fp, "========= BENCHMARK =========\n");
-    fprintf(fp, "reps: %lu\n", num);
-    fprintf(fp, "type: %s\n", bench_mode_name(mode));
-    fprintf(fp, "size: %lu bytes\n", td.segment_size);
-    if (td.gpu_device_id != NO_GPU)
+    log_debug("Value before transfer was %02x", old);
+    log_debug("Value after transfer was  %02x", new);
+
+    if (old != new)
     {
-        gpu_info(td.gpu_device_id, &info);
-        fprintf(fp, "gpu : %s (%02x:%02x:%x)\n", info.name, info.domain, info.bus, info.device);
+        fprintf(fp, "******* DATA RECEIVED SUCCESSFULLY *******\n");
     }
     else
     {
-        fprintf(fp, "gpu : N/A\n");
+        fprintf(fp, "******* DATA NOT RECEIVED PROPERLY *******\n");
     }
-    fprintf(fp, "len : %lu vector entries\n", translist_size(tl));
+}
 
-    fprintf(fp, "========= BANDWIDTH =========\n");
-    for (size_t run = 0; run < num; ++run)
+
+
+void report_summary(FILE* fp, const bench_t* test, const result_t* result, int iec)
+{
+    translist_desc_t td = translist_desc(test->transfer_list);
+
+    fprintf(fp, "===============   BENCHMARK   ===============\n");
+    fprintf(fp, "benchmark type: %s\n", bench_mode_name(test->benchmark_mode));
+    fprintf(fp, "status        : %4s\n", result->success_count == test->num_runs ? "pass" : "fail");
+    fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB");
+    fprintf(fp, "repetitions   : %lu\n", test->num_runs);
+    fprintf(fp, "success runs  : %lu\n", result->success_count);
+    fprintf(fp, "local memory  : %3s\n", td.gpu_device_id != NO_GPU ? "gpu" : "ram");
+    
+    if (td.gpu_device_id != NO_GPU)
     {
-        fprintf(fp, "%3lu %16.3f %-5s\n", run + 1, runs[run], iec ? "MiB/s" : "MB/s");        
+        gpu_info_t info;
+        gpu_info(td.gpu_device_id, &info);
+        fprintf(fp, "local gpu     : #%d \'%s\' (%02x:%02x.%x)\n", td.gpu_device_id, info.name, info.domain, info.bus, info.device);
     }
-    fprintf(fp, "avg %16.3f %-5s\n", total, iec ? "MiB/s" : "MB/s");
+    else
+    {
+        fprintf(fp, "local gpu     : not applicable\n");
+    }
+
+    fprintf(fp, "transfer type : %s\n", bench_mode_name(test->benchmark_mode)); // FIXME: "dma", "data irq", "memcpy"
+    fprintf(fp, "transfer size : %.3f %-3s x %lu\n", (double) result->total_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB", test->num_runs);
+
+    size_t ts = translist_size(test->transfer_list);
+    translist_entry_t te;
+    translist_element(test->transfer_list, 0, &te);
+
+    fprintf(fp, "transfer units: %lu x %.3f %s\n",
+            ts, te.size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB" );
+}
+
+
+
+void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int iec)
+{
+    fprintf(fp, "===============   BANDWIDTH   ===============\n");
+
+    const char* bw_unit = iec ? "MiB/s" : "MB/s";
+    const char* mb_unit = iec ? "MiB" : "MB";
+    double megabytes_per_sec;
+    
+    for (size_t i = 0; i < test->num_runs; ++i)
+    {
+        size_t n = translist_size(test->transfer_list);
+        size_t size = 0;
+        for (size_t e = 0; e < n; ++e)
+        {
+            translist_entry_t entry;
+            translist_element(test->transfer_list, e, &entry);
+            size += entry.size;
+        }
+
+        if (result->runtimes[i] != 0)
+        {
+            megabytes_per_sec = (double) size / (double) result->runtimes[i];
+
+            fprintf(fp, "%3lu %7.2f %-3s %7lu µs %11.3f %-5s\n", 
+                    i + 1, (double) size / (iec ? 1<<20 : 1e6), mb_unit, result->runtimes[i], megabytes_per_sec, bw_unit);
+        }
+        else
+        {
+            fprintf(fp, "%3lu %-13s %-10s %-17s\n", i + 1, "---", "---", "---");
+        }
+    }
+
+    double total_size = result->total_size;
+    total_size *= test->num_runs;
+
+    megabytes_per_sec = total_size / result->total_runtime;
+    fprintf(fp, "avg %7.2f %-3s %7lu µs %11.3f %-5s\n",
+            total_size / (iec ? 1<<20 : 1e6), mb_unit, result->total_runtime, megabytes_per_sec, bw_unit);
 }

@@ -26,11 +26,35 @@ typedef enum {
 } bench_mode_t;
 
 
-/* Get the current timestamp in microseconds (µs) */
+/* Benchmark configuration */
+typedef struct {
+    bench_mode_t    benchmark_mode;         // Type of benchmark
+    size_t          num_runs;               // Number of times to repeat the benchmark
+    translist_t     transfer_list;          // Transfer list that describes what to transfer
+} bench_t;
+
+
+/* Benchmark result */
+typedef struct {
+    size_t          success_count;          // Number of times transfer was a success
+    int             buffer_matches;         // If the remote and local buffer matched after benchmark
+    size_t          total_size;             // Total number of bytes transfered
+    uint64_t        total_runtime;          // Total runtime
+    uint64_t        runtimes[0];            // Individual runtimes
+} result_t;
+
+
+/* Helper function
+ *
+ * Returns the current timestamp in microseconds (µs) 
+ */
 uint64_t ts_usecs();
 
 
-/* Get a random byte value */
+/* Helper function
+ *
+ * Returns a pseudo-random byte value 
+ */
 uint8_t random_byte_value();
 
 
@@ -45,8 +69,11 @@ void server(unsigned adapter_no, int gpu_id, unsigned segment_id, size_t segment
 void stop_server();
 
 
-/* Run benchmark */
-double client(unsigned adapter_no, bench_mode_t benchmark_mode, translist_t transfer_list, size_t num_runs, double* runs_result);
+/* Run benchmark 
+ *
+ * Returns 0 on success, and non-zero on error
+ */
+int client(unsigned adapter_no, const bench_t* benchmark, result_t* result);
 
 #ifdef __cplusplus
 }
