@@ -11,18 +11,19 @@ extern "C" {
 
 
 /* Benchmark different functions */
+#define BENCH_IS_DMA(mode) (!!((mode) & 0x10))      // Is the benchmark type DMA?
 typedef enum {
-    BENCH_DO_NOTHING = 0,                   // Dummy benchmark node
-    BENCH_SCI_DMA_PUSH_TO_REMOTE,           // Use IX/PX DMA engine to push data to remote host
-    BENCH_SCI_DMA_GLOBAL_PUSH_TO_REMOTE,    // Use IX/PX DMA engine to push data to remote host
-    BENCH_SCI_DMA_PULL_FROM_REMOTE,         // Use IX/PX DMA engine to pull data from remote host
-    BENCH_SCI_DMA_GLOBAL_PULL_FROM_REMOTE,  // Use IX/PX DMA engine to pull data from remote host
-    BENCH_SCI_WRITE_TO_REMOTE,              // Use SISCI SCIMemWrite to write data to remote host
-    BENCH_SCI_MEMCPY_TO_REMOTE,             // Use SISCI SCIMemCpy to write data to remote host
-    BENCH_SCI_MEMCPY_FROM_REMOTE,           // Use SISCI SCIMemCpy to read data from remote host
-    BENCH_WRITE_TO_REMOTE,                  // Use regular memcpy to write data to remote host
-    BENCH_READ_FROM_REMOTE,                 // Use regular memcpy to read data from remote host
-    BENCH_SCI_DATA_INTERRUPT                // Use IX/PX data interrupts to send data to a remote host
+    BENCH_DO_NOTHING                    = 0x00,     // Dummy benchmark type
+    BENCH_DMA_PUSH_TO_REMOTE            = 0x10,     // Use DMA to push data to remote host
+    BENCH_DMA_GLOBAL_PUSH_TO_REMOTE     = 0x11,     // Use global DMA to push data to remote host
+    BENCH_DMA_PULL_FROM_REMOTE          = 0x12,     // Use DMA to pull data from remote host
+    BENCH_DMA_GLOBAL_PULL_FROM_REMOTE   = 0x13,     // Use global DMA to pull data from remote host
+    BENCH_SCIMEMWRITE_TO_REMOTE         = 0x20,     // Use SCIMemWrite to write data to remote host (PIO)
+    BENCH_SCIMEMCPY_TO_REMOTE           = 0x30,     // Use SCIMemCpy to write data to remote host (PIO)
+    BENCH_SCIMEMCPY_FROM_REMOTE         = 0x31,     // Use SCIMemCpy to read data from remote host (PIO)
+    BENCH_WRITE_TO_REMOTE               = 0x40,     // Use regular memcpy to write data to remote host (PIO)
+    BENCH_READ_FROM_REMOTE              = 0x41,     // Use regular memcpy to read data from remote host (PIO)
+    BENCH_DATA_INTERRUPT                = 0xff      // Use data interrupts to send data to a remote host
 } bench_mode_t;
 
 

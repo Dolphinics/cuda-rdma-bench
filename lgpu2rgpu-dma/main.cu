@@ -133,23 +133,24 @@ static void give_usage(const char* progname)
 {
     fprintf(stderr,
             "Usage: %s --size=<size>\n"
-            "   or: %s --remote-node=<node id> --type=<benchmark type>\n"
+            "   or: %s --type=<benchmark type> --remote-node=<node id>\n"
             "\nDescription\n"
             "    Benchmark how long it takes to transfer memory between a local and a\n"
             "    remote segment across an NTB link.\n"
             "\nServer mode arguments\n"
             "  --size=<size>            memory size in MB (or MiB if --iec is set)\n"
             "\nClient mode arguments\n"
-            "  --remote-node=<node id>  remote cluster node ID\n"
             "  --type=<bencmark type>   specify benchmark type\n"
-            "  --count=<number>         number of times to repeat test (defaults to 1)\n"
-            "  --vec=<number>           divide segment into a number of DMA vector elements (defaults to 1)\n"
-            "  --len=<number>           repeat the entire vector a number of times (defaults to 10)\n"
+            "  --remote-node=<node id>  remote cluster node ID\n"
             "  --remote-id=<segment id> number identifying the remote segment\n"
+            "  --count=<number>         number of times to repeat test (defaults to 1)\n"
+            "\nDMA vector options (client mode)\n"
+            "  --vec=<number>           divide segment into a number of DMA vector elements (defaults to 1)\n"
+            "  --len=<number>           repeat the entire vector a number of times (defaults to 1)\n"
             "\nOptional arguments (both client and server mode)\n"
             "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
             "  --local-id=<segment id>  number identifying the local segment\n"
-            "  --gpu=<gpu id>           specify a local GPU to use\n"
+            "  --gpu=<gpu id>           specify a local GPU (if not given, buffer is allocated in RAM)\n"
             "  --verbose                increase verbosity level\n"
             "  --iec                    use IEC units (1024) instead of SI units (1000)\n"
             "  --help                   show list of local GPUs and benchmark types\n"
@@ -171,7 +172,7 @@ int main(int argc, char** argv)
     size_t local_segment_factor = 1e6;
 
     size_t vec_div = 1;
-    size_t vec_len = 10;
+    size_t vec_len = 1;
 
     size_t repeat_count = 1;
     bench_mode_t mode = BENCH_DO_NOTHING;
@@ -187,7 +188,7 @@ int main(int argc, char** argv)
     int opt, idx;
     char* str;
 
-    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:viVLh", options, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:viV:L:h", options, &idx)) != -1)
     {
         switch (opt)
         {
@@ -299,9 +300,9 @@ int main(int argc, char** argv)
             case 'V': // set DMA vector element length
                 str = NULL;
                 vec_div = strtoul(optarg, &str, 0);
-                if (str != NULL || *str != '\0' || vec_div == 0)
+                if (str == NULL || *str != '\0' || vec_div == 0)
                 {
-                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    log_error("Argument --vec must be at least 1");
                     exit('V');
                 }
                 break;
@@ -309,9 +310,9 @@ int main(int argc, char** argv)
             case 'L': // set DMA vector length
                 str = NULL;
                 vec_len = strtoul(optarg, &str, 10);
-                if (str != NULL || *str != '\0' || vec_len == 0)
+                if (str == NULL || *str != '\0' || vec_len == 0)
                 {
-                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    log_error("Argument --len must be at least 1");
                     exit('L');
                 }
                 break;
@@ -387,9 +388,9 @@ int main(int argc, char** argv)
             log_warn("Setting benchmark repeat count has no effect in server mode");
         }
 
-        if (vec_len != 10 || vec_div != 1)
+        if (vec_len != 1 || vec_div != 1)
         {
-            log_warn("Tweaking DMA vector has no effect in server mode");
+            log_warn("DMA vector options have no effect in server mode");
         }
 
         if (local_segment_id == NO_ID)
@@ -421,6 +422,13 @@ int main(int argc, char** argv)
             remote_segment_id = remote_node_id;
         }
 
+        if (mode == BENCH_SCIMEMWRITE_TO_REMOTE && local_gpu_id != NO_GPU)
+        {
+            log_error("%s specified, but GPU buffer is selected", bench_mode_name(mode));
+            SCITerminate();
+            exit(1);
+        }
+
         log_info("Initializing transfer list...");
 
         translist_t ts;
@@ -434,7 +442,13 @@ int main(int argc, char** argv)
         translist_desc_t tsd = translist_desc(ts);
         size_t segment_size = tsd.segment_size;
         log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
-            
+    
+        if ((vec_div != 1 || vec_len != 1) && (BENCH_IS_DMA(mode)))
+        {
+            log_warn("DMA vector options have no effect when benchmark type is not DMA");
+            vec_div = vec_len = 1;
+        }
+
         if (vec_div >= segment_size || segment_size / vec_div == 0)
         {
             log_error("Number of DMA vector entries is larger than segment size");

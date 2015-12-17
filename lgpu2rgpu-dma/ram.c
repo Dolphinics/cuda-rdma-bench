@@ -1,11 +1,14 @@
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include "ram.h"
 #include "reporting.h"
 
 
 size_t ram_memcmp(void* local, volatile void* remote, size_t len)
 {
+    // TODO: use memcmp instead
+
     uint8_t* loc_ptr = (uint8_t*) local;
     volatile uint8_t* rem_ptr = (volatile uint8_t*) remote;
 
@@ -36,27 +39,13 @@ void ram_memset(void* buf, size_t len, uint8_t val)
 }
 
 
-void ram_memcpy_remote_to_local(void* local, volatile void* remote, size_t len)
+void ram_memcpy_remote_to_local(void* dst, volatile void* src, size_t len)
 {
-    uint8_t* dst = (uint8_t*) local;
-    volatile uint8_t* src = (volatile uint8_t*) remote;
-
-    log_debug("Copying to local RAM memory %p from remote memory %p", local, remote);
-    for (size_t i = 0; i < len; ++i)
-    {
-        dst[i] = src[i];
-    }
+    memcpy(dst, (void* ) src, len);
 }
 
 
-void ram_memcpy_local_to_remote(void* local, volatile void* remote, size_t len)
+void ram_memcpy_local_to_remote(void* src, volatile void* dst, size_t len)
 {
-    uint8_t* src = (uint8_t*) local;
-    volatile uint8_t* dst = (volatile uint8_t*) remote;
-
-    log_debug("Copying from local RAM memory %p to remote memory %p", local, remote);
-    for (size_t i = 0; i < len; ++i)
-    {
-        dst[i] = src[i];
-    }
+    memcpy((void* ) dst, src, len);
 }

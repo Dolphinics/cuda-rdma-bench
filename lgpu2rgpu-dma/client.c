@@ -49,6 +49,132 @@ static int verify_transfer(translist_desc_t* desc)
 }
 
 
+static size_t create_dma_vec(translist_t tl, dis_dma_vec_t* vec)
+{
+    size_t veclen = translist_size(tl);
+    size_t total_size = 0;
+
+    for (size_t i = 0; i < veclen; ++i)
+    {
+        translist_entry_t entry;
+
+        translist_element(tl, i, &entry);
+        
+        vec[i].size = entry.size;
+        vec[i].local_offset = entry.offset_local;
+        vec[i].remote_offset = entry.offset_remote;
+        vec[i].flags = 0;
+
+        total_size += entry.size;
+    }
+
+    return total_size;
+}
+
+
+static void SCIMemWrite_wrapper(void* local_ptr, volatile void* remote_ptr, size_t len)
+{
+    sci_error_t err;
+
+    SCIMemWrite(local_ptr, remote_ptr, len, 0, &err);
+   
+    if (err != SCI_ERR_OK)
+    {
+        log_error("SCIMemWrite failed");
+    }
+}
+
+
+void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, result_t* result)
+{
+    sci_error_t err;
+    sci_map_t remote_buf_map;
+    volatile void* remote_buffer_ptr;
+
+    // Map remote segment
+    remote_buffer_ptr = SCIMapRemoteSegment(td->segment_remote, &remote_buf_map, 0, td->segment_size, NULL, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to map remote segment");
+        return;
+    }
+
+    size_t veclen = translist_size(tl);
+    dis_dma_vec_t vec[veclen];
+
+    // Find out which memcpy function to use
+    void (*memcpy_func)(void*, volatile void*, size_t) = NULL;
+
+    switch (flags)
+    {
+        case 0:
+            memcpy_func = &ram_memcpy_local_to_remote;
+            if (td->gpu_device_id != NO_GPU)
+            {
+                gpu_prepare_memcpy(td->gpu_device_id);
+                memcpy_func = &gpu_memcpy_local_to_remote;
+            }
+            break;
+
+        case 1:
+            memcpy_func = &ram_memcpy_remote_to_local;
+            if (td->gpu_device_id != NO_GPU)
+            {
+                gpu_prepare_memcpy(td->gpu_device_id);
+                memcpy_func = &gpu_memcpy_remote_to_local;
+            }
+            break;
+
+        case 2:
+        default:
+            memcpy_func = &SCIMemWrite_wrapper;
+            if (td->gpu_device_id != NO_GPU)
+            {
+                log_error("SCIMemWrite is specified for local GPU buffer");
+                goto release;
+            }
+            break;
+    }
+        
+    // Create transfer vector
+    result->total_size = create_dma_vec(tl, vec);
+
+    // Do PIO transfer
+    uint8_t* local_ptr = (uint8_t*) td->buffer_ptr;
+    volatile uint8_t* remote_ptr = (volatile uint8_t*) remote_buffer_ptr;
+
+    uint64_t total_start = ts_usecs();
+    for (size_t i = 0; i < repeat; ++i)
+    {
+        uint64_t start = ts_usecs();
+        for (size_t i = 0; i < veclen; ++i)
+        {
+            memcpy_func(local_ptr + vec[i].local_offset, remote_ptr + vec[i].remote_offset, vec[i].size);
+        }
+        uint64_t end = ts_usecs();
+
+        result->runtimes[i] = end - start;
+        result->success_count++;
+    }
+    uint64_t total_end = ts_usecs();
+
+    result->total_runtime = total_end - total_start;
+
+release:
+    // Release remote segment
+    do
+    {
+        SCIUnmapSegment(remote_buf_map, 0, &err);
+    }
+    while (err == SCI_ERR_BUSY);
+
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to unmap remote segment");
+    }
+}
+
+
 void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags, size_t repeat, result_t* result)
 {
     sci_error_t err;
@@ -65,19 +191,7 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
 
     // Create DMA transfer vector
     dis_dma_vec_t vec[veclen];
-
-    for (size_t i = 0; i < veclen; ++i)
-    {
-        translist_entry_t entry;
-        translist_element(tl, i, &entry);
-        
-        vec[i].size = entry.size;
-        vec[i].local_offset = entry.offset_local;
-        vec[i].remote_offset = entry.offset_remote;
-        vec[i].flags = 0;
-
-        result->total_size += entry.size;
-    }
+    result->total_size = create_dma_vec(tl, vec);
 
     // Do DMA transfer
     log_debug("Performing DMA transfer of %lu-sized vector  %d times", veclen, repeat);
@@ -143,21 +257,21 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
     }
 
     // Do benchmark
-    int fetch_data = 0;
+    unsigned fetch_data = 0;
     unsigned sci_flags = 0;
 
     log_info("Executing benchmark...");
     switch (benchmark->benchmark_mode)
     {
-        case BENCH_SCI_DMA_GLOBAL_PUSH_TO_REMOTE:
+        case BENCH_DMA_GLOBAL_PUSH_TO_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
-        case BENCH_SCI_DMA_PUSH_TO_REMOTE:
+        case BENCH_DMA_PUSH_TO_REMOTE:
             dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
             break;
 
-        case BENCH_SCI_DMA_GLOBAL_PULL_FROM_REMOTE:
+        case BENCH_DMA_GLOBAL_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_GLOBAL;
-        case BENCH_SCI_DMA_PULL_FROM_REMOTE:
+        case BENCH_DMA_PULL_FROM_REMOTE:
             sci_flags |= SCI_FLAG_DMA_READ;
             fetch_data = 1;
             dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
@@ -166,6 +280,16 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
         default:
             log_error("%s is not yet supported", bench_mode_name(benchmark->benchmark_mode));
             return -2;
+
+        case BENCH_READ_FROM_REMOTE:
+            fetch_data = 1;
+        case BENCH_WRITE_TO_REMOTE:
+            pio(benchmark->transfer_list, &tl_desc, fetch_data, benchmark->num_runs, result);
+            break;
+            
+        case BENCH_SCIMEMWRITE_TO_REMOTE:
+            pio(benchmark->transfer_list, &tl_desc, 2, benchmark->num_runs, result);
+            break;
 
         case BENCH_DO_NOTHING:
             log_error("No benchmark type is set");
@@ -203,7 +327,7 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
     
     if (verify_transfer(&tl_desc) != 1)
     {
-        log_warn("Local and remote buffers differ!");
+        log_error("Local and remote buffers differ!!");
         result->buffer_matches = 0;
     }
     else

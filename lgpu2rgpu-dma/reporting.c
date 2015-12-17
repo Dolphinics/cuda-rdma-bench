@@ -131,7 +131,8 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
 
     fprintf(fp, "===============   BENCHMARK   ===============\n");
     fprintf(fp, "benchmark type: %s\n", bench_mode_name(test->benchmark_mode));
-    fprintf(fp, "status        : %4s\n", result->success_count == test->num_runs ? "pass" : "fail");
+    fprintf(fp, "status        : %4s\n", result->success_count == test->num_runs && result->buffer_matches ? "pass" : "fail");
+    fprintf(fp, "buffers match : %-3s\n", result->buffer_matches ? "yes" : "no");
     fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB");
     fprintf(fp, "repetitions   : %lu\n", test->num_runs);
     fprintf(fp, "success runs  : %lu\n", result->success_count);
@@ -148,7 +149,7 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
         fprintf(fp, "local gpu     : not applicable\n");
     }
 
-    fprintf(fp, "transfer type : %s\n", bench_mode_name(test->benchmark_mode)); // FIXME: "dma", "data irq", "memcpy"
+    //fprintf(fp, "transfer type : %s\n", BENCH_IS_DMA(test->benchmark_mode) ? "dma" : "pio"); // FIXME: GPU might also use dma
     fprintf(fp, "transfer size : %.3f %-3s x %lu\n", (double) result->total_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB", test->num_runs);
 
     size_t ts = translist_size(test->transfer_list);
@@ -167,8 +168,12 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
 
     const char* bw_unit = iec ? "MiB/s" : "MB/s";
     const char* mb_unit = iec ? "MiB" : "MB";
+    
     double megabytes_per_sec;
     
+    fprintf(fp, "%3s %-13s %-10s %-17s\n", 
+            "#", "segment size", "latency", "bandwidth");
+
     for (size_t i = 0; i < test->num_runs; ++i)
     {
         size_t n = translist_size(test->transfer_list);

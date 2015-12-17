@@ -8,7 +8,7 @@ extern "C" {
 #include <stdint.h>
 
 
-/* Do memset on a RAM device buffer
+/* Do memset on a RAM memory buffer
  *
  * buf                  - pointer to the buffer
  * len                  - size of the buffer
@@ -30,9 +30,22 @@ void ram_memset(void* buf, size_t len, uint8_t val);
 size_t ram_memcmp(void* src_ptr, volatile void* dst_ptr, size_t len);
 
 
-//void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size_t len);
+/* Copy memory from remote buffer to local RAM memory buffer
+ *
+ * local_ptr            - pointer to local buffer
+ * remote_ptr           - pointer to remote buffer
+ * len                  - number of bytes to copy
+ */
+void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size_t len);
 
-//void ram_memcpy_local_to_remote(void* local_ptr, volatile void* remote_ptr, size_t len);
+
+/* Copy memory from a local RAM memory buffer to a remote buffer
+ *
+ * local_ptr            - pointer to local buffer
+ * remote_ptr           - pointer to remote buffer
+ * len                  - number of bytes to copy
+ */
+void ram_memcpy_local_to_remote(void* local_ptr, volatile void* remote_ptr, size_t len);
 
 
 #ifdef __cplusplus

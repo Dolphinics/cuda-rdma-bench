@@ -115,9 +115,9 @@ static const char* bench_names[] = {
     "dma-push-global",
     "dma-pull",
     "dma-pull-global",
-    "sciwrite",
-    "scimemcpy-push",
-    "scimemcpy-pull",
+    "scimemwrite",
+    "scimemcpy-write",
+    "scimemcpy-read",
     "write",
     "read",
     "data-interrupt",
@@ -126,10 +126,10 @@ static const char* bench_names[] = {
 
 
 static const char* bench_descriptions[] = {
-    "use DIS DMA engine to push data to remote host",
-    "use DIS DMA engine to push data to remote host",
-    "use DIS DMA engine to pull data from remote host",
-    "use DIS DMA engine to pull data from remote host",
+    "use DMA to push data to remote host",
+    "use global DMA to push data to remote host",
+    "use DMA to pull data from remote host",
+    "use global DMA to pull data from remote host",
     "use SCIMemWrite to write data to remote host",
     "use SCIMemCpy to write data to remote host",
     "use SCIMemCpy to read data from remote host",
@@ -141,16 +141,16 @@ static const char* bench_descriptions[] = {
 
 
 bench_mode_t all_benchmarking_modes[] = {
-    BENCH_SCI_DMA_PUSH_TO_REMOTE,
-    BENCH_SCI_DMA_GLOBAL_PUSH_TO_REMOTE,
-    BENCH_SCI_DMA_PULL_FROM_REMOTE,
-    BENCH_SCI_DMA_GLOBAL_PULL_FROM_REMOTE,
-    BENCH_SCI_WRITE_TO_REMOTE,
-    BENCH_SCI_MEMCPY_TO_REMOTE,
-    BENCH_SCI_MEMCPY_FROM_REMOTE,
-    BENCH_WRITE_TO_REMOTE,
-    BENCH_READ_FROM_REMOTE,
-    BENCH_SCI_DATA_INTERRUPT,
+    BENCH_DMA_PUSH_TO_REMOTE,             
+    BENCH_DMA_GLOBAL_PUSH_TO_REMOTE,      
+    BENCH_DMA_PULL_FROM_REMOTE,           
+    BENCH_DMA_GLOBAL_PULL_FROM_REMOTE,
+    BENCH_SCIMEMWRITE_TO_REMOTE,          
+    BENCH_SCIMEMCPY_TO_REMOTE,            
+    BENCH_SCIMEMCPY_FROM_REMOTE,          
+    BENCH_WRITE_TO_REMOTE,                
+    BENCH_READ_FROM_REMOTE,               
+    BENCH_DATA_INTERRUPT,
     BENCH_DO_NOTHING
 };
 

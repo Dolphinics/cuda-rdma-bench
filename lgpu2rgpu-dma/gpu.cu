@@ -208,6 +208,50 @@ void gpu_memcpy_buffer_to_local(int gpu, void* gpu_buf, void* ram_buf, size_t le
 }
 
 
+
+extern "C"
+void gpu_prepare_memcpy(int gpu)
+{
+    cudaError_t err = cudaSetDevice(gpu);
+
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+    }
+
+    cudaDeviceSynchronize();
+}
+
+
+
+extern "C"
+void gpu_memcpy_remote_to_local(void* local_buf, volatile void* remote_buf, size_t len)
+{
+    cudaDeviceSynchronize();
+
+    cudaError_t err = cudaMemcpy(local_buf, (void*) remote_buf, len, cudaMemcpyHostToDevice);
+
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+    }
+}
+
+
+extern "C"
+void gpu_memcpy_local_to_remote(void* local_buf, volatile void* remote_buf, size_t len)
+{
+    cudaDeviceSynchronize();
+
+    cudaError_t err = cudaMemcpy((void*) remote_buf, local_buf, len, cudaMemcpyDeviceToHost);
+
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+    }
+}
+
+
 extern "C"
 int gpu_info(int gpu, gpu_info_t* info)
 {

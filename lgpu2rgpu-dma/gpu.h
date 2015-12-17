@@ -71,11 +71,31 @@ void gpu_memset(int gpu, void* buf, size_t len, uint8_t val);
 size_t gpu_memcmp(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
 
 
-//void gpu_copy_remote_to_local(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
-
-//void gpu_copy_local_to_remote(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
-
+/* Copy data from GPU device buffer to RAM buffer
+ *
+ * gpu                  - local GPU where the device buffer is allocated
+ * gpu_ptr              - device buffer pointer
+ * local_ptr            - RAM buffer pointer
+ * len                  - size of the buffers
+ *
+ * No return value
+ */
 void gpu_memcpy_buffer_to_local(int gpu, void* gpu_ptr, void* local_ptr, size_t len);
+
+
+/* Prepare a copy between remote buffer and local GPU device buffer
+ *
+ * gpu                  - local GPU where the device buffer is allocated
+ *
+ * No return value
+ */
+void gpu_prepare_memcpy(int gpu);
+
+
+void gpu_memcpy_remote_to_local(void* gpu_ptr, volatile void* remote_ptr, size_t len);
+
+void gpu_memcpy_local_to_remote(void* gpu_ptr, volatile void* remote_ptr, size_t len);
+
 
 
 /* Get the device pointer for a device buffer
