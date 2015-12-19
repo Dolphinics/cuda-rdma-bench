@@ -18,6 +18,6 @@ uint64_t ts_usecs()
 uint8_t random_byte_value()
 {
     srand(ts_usecs());
-    return rand() & 0xff;
+    return (rand() & 0xff) + 1; // should never be 0x00
 }
 

@@ -25,9 +25,9 @@ void ram_memset(void* buf, size_t len, uint8_t val);
  * dst_ptr              - pointer to the second buffer
  * len                  - size of the buffers
  *
- * Returns the byte position where the first difference is encountered
+ * Returns 0 if the buffers are equal, or a non-zero value if they are not
  */
-size_t ram_memcmp(void* src_ptr, volatile void* dst_ptr, size_t len);
+int ram_memcmp(void* src_ptr, volatile void* dst_ptr, size_t len);
 
 
 /* Copy memory from remote buffer to local RAM memory buffer
@@ -35,6 +35,8 @@ size_t ram_memcmp(void* src_ptr, volatile void* dst_ptr, size_t len);
  * local_ptr            - pointer to local buffer
  * remote_ptr           - pointer to remote buffer
  * len                  - number of bytes to copy
+ *
+ * No return value
  */
 void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size_t len);
 
@@ -44,6 +46,8 @@ void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size
  * local_ptr            - pointer to local buffer
  * remote_ptr           - pointer to remote buffer
  * len                  - number of bytes to copy
+ *
+ * No return value
  */
 void ram_memcpy_local_to_remote(void* local_ptr, volatile void* remote_ptr, size_t len);
 

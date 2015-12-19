@@ -213,12 +213,7 @@ int translist_insert(translist_t handle, size_t local_offs, size_t remote_offs, 
         return -ENOMEM;
     }
 
-    if (size > MAX_SIZE)
-    {
-        log_error("Transfer size is too large");
-        return -EINVAL;
-    }
-    else if (size > handle->segment_size)
+    if (size > handle->segment_size)
     {
         log_error("Transfer size is larger than segment size");
         return -EINVAL;

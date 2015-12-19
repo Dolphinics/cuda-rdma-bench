@@ -66,9 +66,9 @@ void gpu_memset(int gpu, void* buf, size_t len, uint8_t val);
  * ram_ptr              - pointer to the RAM buffer
  * len                  - size of the buffer
  *
- * Returns the byte position where the first difference is encountered
+ * Returns 0 if the buffers are equal or a non-zero value otherwise
  */
-size_t gpu_memcmp(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
+int gpu_memcmp(int gpu, void* gpu_ptr, volatile void* remote_ptr, size_t len);
 
 
 /* Copy data from GPU device buffer to RAM buffer

@@ -252,7 +252,7 @@ int main(int argc, char** argv)
             case 's': // set segment size
                 str = NULL;
                 local_segment_count = strtoul(optarg, &str, 0);
-                if (str == NULL || *str != '\0' || local_segment_count == 0 || local_segment_count >= MAX_SIZE || local_segment_count * local_segment_factor >= MAX_SIZE)
+                if (str == NULL || *str != '\0' || local_segment_count == 0)
                 {
                     log_error("Argument %s must be a valid segment size in %s", argv[optind-1], local_segment_factor == 1e3 ? "MB" : "MiB");
                     exit('s');
@@ -370,12 +370,6 @@ int main(int argc, char** argv)
     /* Run as client or server */
     if (remote_node_id == NO_NODE)
     {
-        if (local_segment_count >= MAX_SIZE || local_segment_factor * local_segment_count >= MAX_SIZE)
-        {
-            log_error("Segment size is too large");
-            SCITerminate();
-            exit(1);
-        }
         log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
 
         if (mode != BENCH_DO_NOTHING)

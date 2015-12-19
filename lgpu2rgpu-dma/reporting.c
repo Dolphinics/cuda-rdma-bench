@@ -113,7 +113,7 @@ void report_buffer_change(FILE* fp, uint8_t old, uint8_t new)
     log_debug("Value before transfer was %02x", old);
     log_debug("Value after transfer was  %02x", new);
 
-    if (old != new)
+    if (old != new && new != 0x00)
     {
         fprintf(fp, "******* DATA RECEIVED SUCCESSFULLY *******\n");
     }

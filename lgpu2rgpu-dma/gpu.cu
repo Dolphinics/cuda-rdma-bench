@@ -52,7 +52,7 @@ void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
 
 
 extern "C"
-size_t gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
+int gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 {
     cudaError_t err = cudaSetDevice(gpu);
     if (err != cudaSuccess)
@@ -80,21 +80,11 @@ size_t gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 
     cudaDeviceSynchronize();
 
-    size_t idx;
-    volatile uint8_t* ptr = (volatile uint8_t*) ramptr;
-
     log_debug("Comparing local GPU memory %p to remote memory %p", gpuptr, ramptr);
-    for (idx = 0; idx < len; ++idx)
-    {
-        if (buf[idx] != ptr[idx])
-        {
-            log_debug("Byte %lu differs (%02x %02x)", idx, buf[idx], ptr[idx]);
-            break;
-        }
-    }
+    int equality = memcmp(buf, (void*) ramptr, len);
 
     cudaFreeHost(buf);
-    return idx;
+    return equality;
 }
 
 
