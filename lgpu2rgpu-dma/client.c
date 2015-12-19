@@ -24,14 +24,14 @@ static int verify_transfer(translist_desc_t* desc)
     }
 
     log_info("Comparing local and remote memory...");
-    size_t bytes;
+    int compare;
     if (desc->local_gpu_info != NULL)
     {
-        bytes = gpu_memcmp(desc->local_gpu_info->id, desc->buffer_ptr, remote_ptr, desc->segment_size);
+        compare = gpu_memcmp(desc->local_gpu_info->id, desc->buffer_ptr, remote_ptr, desc->segment_size);
     }
     else
     {
-        bytes = ram_memcmp(desc->buffer_ptr, remote_ptr, desc->segment_size);
+        compare = ram_memcmp(desc->buffer_ptr, remote_ptr, desc->segment_size);
     }
 
     do
@@ -45,7 +45,7 @@ static int verify_transfer(translist_desc_t* desc)
         log_error("Unexpected error: %s", SCIGetErrorString(err));
     }
 
-    return bytes == desc->segment_size;
+    return compare == 0;
 }
 
 
@@ -194,7 +194,7 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
     result->total_size = create_dma_vec(tl, vec);
 
     // Do DMA transfer
-    log_debug("Performing DMA transfer of %lu-sized vector  %d times", veclen, repeat);
+    log_debug("Performing DMA transfer of %lu-sized vector %d times", veclen, repeat);
     result->total_runtime = 0;
     result->success_count = 0;
 

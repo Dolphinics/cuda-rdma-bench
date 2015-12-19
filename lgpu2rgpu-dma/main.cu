@@ -423,6 +423,12 @@ int main(int argc, char** argv)
             exit(1);
         }
 
+        if ((vec_div != 1 || vec_len != 1) && !BENCH_IS_DMA(mode))
+        {
+            log_warn("DMA vector options have no effect when benchmark type is not DMA");
+            vec_div = vec_len = 1;
+        }
+
         log_info("Initializing transfer list...");
 
         translist_t ts;
@@ -436,12 +442,6 @@ int main(int argc, char** argv)
         translist_desc_t tsd = translist_desc(ts);
         size_t segment_size = tsd.segment_size;
         log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
-    
-        if ((vec_div != 1 || vec_len != 1) && (BENCH_IS_DMA(mode)))
-        {
-            log_warn("DMA vector options have no effect when benchmark type is not DMA");
-            vec_div = vec_len = 1;
-        }
 
         if (vec_div >= segment_size || segment_size / vec_div == 0)
         {
@@ -450,8 +450,8 @@ int main(int argc, char** argv)
             SCITerminate();
             exit(1);
         }
-
-        /* Create transfer list */
+    
+        /* Fill transfer list */
         size_t entry_size = segment_size / vec_div;
 
         for (size_t k = 0; k < vec_len; ++k)

@@ -131,7 +131,7 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
 
     fprintf(fp, "===============   BENCHMARK   ===============\n");
     fprintf(fp, "benchmark type: %s\n", bench_mode_name(test->benchmark_mode));
-    fprintf(fp, "status        : %4s\n", result->success_count == test->num_runs && result->buffer_matches ? "pass" : "fail");
+    fprintf(fp, "overall status: %4s\n", result->success_count == test->num_runs && result->buffer_matches ? "pass" : "fail");
     fprintf(fp, "buffers match : %-3s\n", result->buffer_matches ? "yes" : "no");
     fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB");
     fprintf(fp, "repetitions   : %lu\n", test->num_runs);

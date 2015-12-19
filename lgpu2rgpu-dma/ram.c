@@ -15,7 +15,7 @@ int ram_memcmp(void* local, volatile void* remote, size_t len)
 void ram_memset(void* buf, size_t len, uint8_t val)
 {
     log_debug("Filling buffer with value %02x...", val);
-    memset(buf, len, val);
+    memset(buf, val, len);
 }
 
 

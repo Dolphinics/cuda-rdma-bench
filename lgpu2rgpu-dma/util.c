@@ -270,18 +270,6 @@ uint64_t remote_ioaddr(sci_remote_segment_t segment)
 }
 
 
-static sci_callback_action_t notify_connection(void* notused, sci_local_segment_t segment, sci_segment_cb_reason_t reason, unsigned remote_node, unsigned adapter, sci_error_t status)
-{
-    log_debug("Local segment event on adapter %u", adapter);
-    if (status == SCI_ERR_OK && reason == SCI_CB_CONNECT)
-    {
-        log_info("Remote node %u connected", remote_node);
-    }
-
-    return SCI_CALLBACK_CONTINUE;
-}
-
-
 sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, const gpu_info_t* gpu, void** buf)
 {
     sci_error_t err = SCI_ERR_OK, 
@@ -294,12 +282,7 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return SCI_ERR_NOSPC;
     }
 
-    unsigned flags = SCI_FLAG_EMPTY;
-    if (verbosity >= 2)
-    {
-        flags |= SCI_FLAG_USE_CALLBACK;
-    }
-    SCICreateSegment(sd, segment, id, size, &notify_connection, NULL, flags, &err);
+    SCICreateSegment(sd, segment, id, size, NULL, NULL, SCI_FLAG_EMPTY, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));
@@ -338,7 +321,7 @@ sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
     sci_error_t err, tmp;
     err = tmp = SCI_ERR_OK;
 
-    SCICreateSegment(sd, segment, id, size, &notify_connection, NULL, verbosity >= 2 ? SCI_FLAG_USE_CALLBACK : 0, &err);
+    SCICreateSegment(sd, segment, id, size, NULL, NULL, 0, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));

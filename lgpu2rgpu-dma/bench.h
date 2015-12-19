@@ -11,7 +11,10 @@ extern "C" {
 
 
 /* Benchmark different functions */
-#define BENCH_IS_DMA(mode) (!!((mode) & 0x10))      // Is the benchmark type DMA?
+#define BENCH_IS_DMA(mode)                      \
+    ((mode) == BENCH_DMA_PUSH_TO_REMOTE         \
+     || (mode) == BENCH_DMA_PULL_FROM_REMOTE)
+
 typedef enum {
     BENCH_DO_NOTHING                    = 0x00,     // Dummy benchmark type
     BENCH_DMA_PUSH_TO_REMOTE            = 0x10,     // Use DMA to push data to remote host
