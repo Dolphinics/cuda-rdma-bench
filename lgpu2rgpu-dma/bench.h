@@ -15,16 +15,15 @@ extern "C" {
 typedef enum {
     BENCH_DO_NOTHING                    = 0x00,     // Dummy benchmark type
     BENCH_DMA_PUSH_TO_REMOTE            = 0x10,     // Use DMA to push data to remote host
-    BENCH_DMA_GLOBAL_PUSH_TO_REMOTE     = 0x11,     // Use global DMA to push data to remote host
     BENCH_DMA_PULL_FROM_REMOTE          = 0x12,     // Use DMA to pull data from remote host
-    BENCH_DMA_GLOBAL_PULL_FROM_REMOTE   = 0x13,     // Use global DMA to pull data from remote host
     BENCH_SCIMEMWRITE_TO_REMOTE         = 0x20,     // Use SCIMemWrite to write data to remote host (PIO)
-    BENCH_SCIMEMCPY_TO_REMOTE           = 0x30,     // Use SCIMemCpy to write data to remote host (PIO)
-    BENCH_SCIMEMCPY_FROM_REMOTE         = 0x31,     // Use SCIMemCpy to read data from remote host (PIO)
-    BENCH_WRITE_TO_REMOTE               = 0x40,     // Use regular memcpy to write data to remote host (PIO)
-    BENCH_READ_FROM_REMOTE              = 0x41,     // Use regular memcpy to read data from remote host (PIO)
+    BENCH_SCIMEMCPY_TO_REMOTE           = 0x40,     // Use SCIMemCpy to write data to remote host (PIO)
+    BENCH_SCIMEMCPY_FROM_REMOTE         = 0x51,     // Use SCIMemCpy to read data from remote host (PIO)
+    BENCH_WRITE_TO_REMOTE               = 0x80,     // Use regular memcpy to write data to remote host (PIO)
+    BENCH_READ_FROM_REMOTE              = 0x81,     // Use regular memcpy to read data from remote host (PIO)
     BENCH_DATA_INTERRUPT                = 0xff      // Use data interrupts to send data to a remote host
 } bench_mode_t;
+// FIXME: Global DMA requires CreateSegment to be called with SCI_FLAG_DMA_GLOBAL
 
 
 /* Benchmark configuration */

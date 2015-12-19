@@ -251,7 +251,7 @@ int gpu_info(int gpu, gpu_info_t* info)
     err = cudaGetDeviceProperties(&prop, gpu);
     if (err != cudaSuccess)
     {
-        log_error("Unknown GPU: %s", cudaGetErrorString(err));
+        log_error("Unknown GPU %d: %s", gpu, cudaGetErrorString(err));
         return 0;
     }
 

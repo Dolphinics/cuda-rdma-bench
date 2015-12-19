@@ -1,6 +1,7 @@
 #include "util.h"
 #include <sisci_api.h>
 #include <string.h>
+#include "common.h"
 #include "reporting.h"
 #include "gpu.h"
 #include "bench.h"
@@ -112,9 +113,7 @@ static const char* error_strings[] = {
 
 static const char* bench_names[] = {
     "dma-push",
-    "dma-push-global",
     "dma-pull",
-    "dma-pull-global",
     "scimemwrite",
     "scimemcpy-write",
     "scimemcpy-read",
@@ -127,9 +126,7 @@ static const char* bench_names[] = {
 
 static const char* bench_descriptions[] = {
     "use DMA to push data to remote host",
-    "use global DMA to push data to remote host",
     "use DMA to pull data from remote host",
-    "use global DMA to pull data from remote host",
     "use SCIMemWrite to write data to remote host",
     "use SCIMemCpy to write data to remote host",
     "use SCIMemCpy to read data from remote host",
@@ -142,9 +139,7 @@ static const char* bench_descriptions[] = {
 
 bench_mode_t all_benchmarking_modes[] = {
     BENCH_DMA_PUSH_TO_REMOTE,             
-    BENCH_DMA_GLOBAL_PUSH_TO_REMOTE,      
     BENCH_DMA_PULL_FROM_REMOTE,           
-    BENCH_DMA_GLOBAL_PULL_FROM_REMOTE,
     BENCH_SCIMEMWRITE_TO_REMOTE,          
     BENCH_SCIMEMCPY_TO_REMOTE,            
     BENCH_SCIMEMCPY_FROM_REMOTE,          
@@ -275,34 +270,52 @@ uint64_t remote_ioaddr(sci_remote_segment_t segment)
 }
 
 
-sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, int gpu, void** buf)
+static sci_callback_action_t notify_connection(void* notused, sci_local_segment_t segment, sci_segment_cb_reason_t reason, unsigned remote_node, unsigned adapter, sci_error_t status)
 {
-    sci_error_t err = SCI_ERR_OK;
+    log_debug("Local segment event on adapter %u", adapter);
+    if (status == SCI_ERR_OK && reason == SCI_CB_CONNECT)
+    {
+        log_info("Remote node %u connected", remote_node);
+    }
 
-    *buf = gpu_malloc(gpu, size);
+    return SCI_CALLBACK_CONTINUE;
+}
+
+
+sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, const gpu_info_t* gpu, void** buf)
+{
+    sci_error_t err = SCI_ERR_OK, 
+                tmp = SCI_ERR_OK;
+
+    *buf = gpu_malloc(gpu->id, size);
     if (*buf == NULL)
     {
         log_error("Insufficient resources to allocate GPU buffer");
         return SCI_ERR_NOSPC;
     }
 
-    SCICreateSegment(sd, segment, id, size, NULL, NULL, SCI_FLAG_EMPTY, &err);
+    unsigned flags = SCI_FLAG_EMPTY;
+    if (verbosity >= 2)
+    {
+        flags |= SCI_FLAG_USE_CALLBACK;
+    }
+    SCICreateSegment(sd, segment, id, size, &notify_connection, NULL, flags, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));
-        gpu_free(gpu, *buf);
+        gpu_free(gpu->id, *buf);
         return err;
     }
 
-    void* devptr = gpu_devptr(gpu, *buf);
+    void* devptr = gpu_devptr(gpu->id, *buf);
     devptr_set_sync_memops(devptr);
 
     SCIAttachPhysicalMemory(0, devptr, 0, size, *segment, SCI_FLAG_CUDA_BUFFER, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to attach physical memory: %s", SCIGetErrorString(err));
-        SCIRemoveSegment(*segment, 0, &err);
-        gpu_free(gpu, *buf);
+        SCIRemoveSegment(*segment, 0, &tmp);
+        gpu_free(gpu->id, *buf);
         return err;
     }
 
@@ -310,8 +323,8 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to prepare segment: %s", SCIGetErrorString(err));
-        SCIRemoveSegment(*segment, 0, &err);
-        gpu_free(gpu, *buf);
+        SCIRemoveSegment(*segment, 0, &tmp);
+        gpu_free(gpu->id, *buf);
         return err;
     }
 
@@ -322,9 +335,10 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
 
 sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, sci_map_t* map, void** buf)
 {
-    sci_error_t err = SCI_ERR_OK;
+    sci_error_t err, tmp;
+    err = tmp = SCI_ERR_OK;
 
-    SCICreateSegment(sd, segment, id, size, NULL, NULL, 0, &err);
+    SCICreateSegment(sd, segment, id, size, &notify_connection, NULL, verbosity >= 2 ? SCI_FLAG_USE_CALLBACK : 0, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));
@@ -335,7 +349,7 @@ sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to map local segment: %s", SCIGetErrorString(err));
-        SCIRemoveSegment(*segment, 0, &err);
+        SCIRemoveSegment(*segment, 0, &tmp);
         return err;
     }
 
@@ -343,8 +357,8 @@ sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to prepare segment: %s", SCIGetErrorString(err));
-        SCIUnmapSegment(*map, 0, &err);
-        SCIRemoveSegment(*segment, 0, &err);
+        SCIUnmapSegment(*map, 0, &tmp);
+        SCIRemoveSegment(*segment, 0, &tmp);
         return err;
     }
 
@@ -374,7 +388,7 @@ void free_gpu_segment(sci_local_segment_t segment, int gpu, void* buf)
 
 void free_ram_segment(sci_local_segment_t segment, sci_map_t map)
 {
-    sci_error_t err;
+    sci_error_t err = SCI_ERR_OK;
 
     do
     {
@@ -398,3 +412,4 @@ void free_ram_segment(sci_local_segment_t segment, sci_map_t map)
         log_error("Failed to remove segment: %s", SCIGetErrorString(err));
     }
 }
+

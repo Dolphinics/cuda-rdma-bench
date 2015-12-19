@@ -136,20 +136,7 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
     fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB");
     fprintf(fp, "repetitions   : %lu\n", test->num_runs);
     fprintf(fp, "success runs  : %lu\n", result->success_count);
-    fprintf(fp, "local memory  : %3s\n", td.gpu_device_id != NO_GPU ? "gpu" : "ram");
-    
-    if (td.gpu_device_id != NO_GPU)
-    {
-        gpu_info_t info;
-        gpu_info(td.gpu_device_id, &info);
-        fprintf(fp, "local gpu     : #%d \'%s\' (%02x:%02x.%x)\n", td.gpu_device_id, info.name, info.domain, info.bus, info.device);
-    }
-    else
-    {
-        fprintf(fp, "local gpu     : not applicable\n");
-    }
 
-    //fprintf(fp, "transfer type : %s\n", BENCH_IS_DMA(test->benchmark_mode) ? "dma" : "pio"); // FIXME: GPU might also use dma
     fprintf(fp, "transfer size : %.3f %-3s x %lu\n", (double) result->total_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB", test->num_runs);
 
     size_t ts = translist_size(test->transfer_list);
@@ -158,6 +145,32 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
 
     fprintf(fp, "transfer units: %lu x %.3f %s\n",
             ts, te.size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB" );
+    
+    if (td.local_gpu_info != NULL)
+    {
+        fprintf(fp, "local memory  : gpu\n");
+        fprintf(fp, "local gpu     : #%d %s (local ioaddr %02x:%02x.%x)\n", 
+                td.local_gpu_info->id, td.local_gpu_info->name, 
+                td.local_gpu_info->domain, td.local_gpu_info->bus, td.local_gpu_info->device);
+    }
+    else
+    {
+        fprintf(fp, "local memory  : ram\n");
+        fprintf(fp, "local gpu     : not applicable\n");
+    }
+
+    if (td.remote_gpu_info != NULL)
+    {
+        fprintf(fp, "remote memory : gpu\n");
+        fprintf(fp, "remote gpu    : #%d %s (remote ioaddr %02x:%02x.%x)\n", 
+                td.remote_gpu_info->id, td.remote_gpu_info->name, 
+                td.remote_gpu_info->domain, td.remote_gpu_info->bus, td.remote_gpu_info->device);
+    }
+    else
+    {
+        fprintf(fp, "remote memory : ram\n");
+        fprintf(fp, "remote gpu    : not applicable\n");
+    }
 }
 
 

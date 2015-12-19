@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sisci_api.h>
 #include <pthread.h>
+#include <string.h>
 #include "reporting.h"
 #include "common.h"
 #include "util.h"
@@ -12,10 +13,10 @@
 
 /* Buffer info */
 typedef struct {
-    int     gpu;
-    void*   ptr;
-    size_t  len;
-    uint8_t val;
+    const gpu_info_t*   gpu;
+    void*               ptr;
+    size_t              len;
+    uint8_t             val;
 } buf_info_t;
 
 
@@ -36,16 +37,16 @@ void stop_server()
 }
 
 
-sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t irq, sci_error_t status)
+static sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t irq, sci_error_t status)
 {
     if (status == SCI_ERR_OK)
     {
         buf_info_t* bi = (buf_info_t*) buf_info;
         uint8_t byte;
 
-        if (bi->gpu != NO_GPU)
+        if (bi->gpu != NULL)
         {
-            gpu_memcpy_buffer_to_local(bi->gpu, bi->ptr, &byte, 1);
+            gpu_memcpy_buffer_to_local(bi->gpu->id, bi->ptr, &byte, 1);
         }
         else
         {
@@ -61,7 +62,7 @@ sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t irq,
 }
 
 
-void server(unsigned adapter, int gpu, unsigned id, size_t size)
+static void run_server(unsigned adapter, const gpu_info_t* gpu, unsigned id, size_t size)
 {
     sci_error_t err;
     sci_desc_t sd;
@@ -81,14 +82,14 @@ void server(unsigned adapter, int gpu, unsigned id, size_t size)
 
     uint8_t byte = random_byte_value();
     log_debug("Creating buffer and filling with random value %02x", byte);
-    if (gpu != NO_GPU)
+    if (gpu != NULL)
     {
-        err = make_gpu_segment(sd, adapter, id, &segment, size, gpu, &buffer);
-        gpu_memset(gpu, buffer, size, byte);
+        err = make_gpu_segment(sd, adapter, id & ID_MASK, &segment, size, gpu, &buffer);
+        gpu_memset(gpu->id, buffer, size, byte);
     }
     else
     {
-        err = make_ram_segment(sd, adapter, id, &segment, size, &mapping, &buffer);
+        err = make_ram_segment(sd, adapter, id & ID_MASK, &segment, size, &mapping, &buffer);
         ram_memset(buffer, size, byte);
     }
 
@@ -139,9 +140,9 @@ remove_irq:
     while (err == SCI_ERR_BUSY);
 
 free_segment:
-    if (gpu != NO_GPU)
+    if (gpu != NULL)
     {
-        free_gpu_segment(segment, gpu, buffer);
+        free_gpu_segment(segment, gpu->id, buffer);
     }
     else
     {
@@ -151,3 +152,51 @@ close_desc:
     SCIClose(sd, 0, &err);
 }
 
+
+void server(unsigned adapter, int gpu, unsigned id, size_t size)
+{
+    sci_error_t err = SCI_ERR_OK;
+    sci_desc_t sd;
+
+    SCIOpen(&sd, 0, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to initialize SISCI descriptor");
+        return;
+    }
+
+    // Create GPU info segment
+    sci_local_segment_t gi_segment;
+    sci_map_t gi_mapping;
+    gpu_info_t* local_gpu;
+
+    unsigned bufinfo_id = (('G' ^ 'P' ^ 'U') << ID_MASK_BITS) | id;
+    err = make_ram_segment(sd, adapter, bufinfo_id, &gi_segment, sizeof(gpu_info_t), &gi_mapping, (void**) &local_gpu);
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to create buffer info segment");
+        SCIClose(sd, 0, &err);
+        return;
+    }
+    memset(local_gpu, sizeof(gpu_info_t), 0xff);
+    local_gpu->id = NO_GPU;
+
+    // Get local GPU information
+    if (gpu != NO_GPU && gpu_info(gpu, local_gpu) != 1)
+    {
+        log_error("Failed to get GPU info, aborting...");
+        free_ram_segment(gi_segment, gi_mapping);
+        SCIClose(sd, 0, &err);
+        return;
+    }
+
+    SCISetSegmentAvailable(gi_segment, adapter, 0, &err);
+
+    // Run server
+    run_server(adapter, gpu != NO_GPU ? local_gpu : NULL, id, size);
+
+    SCISetSegmentUnavailable(gi_segment, adapter, 0, &err);
+
+    free_ram_segment(gi_segment, gi_mapping);
+    SCIClose(sd, 0, &err);
+}

@@ -25,9 +25,9 @@ static int verify_transfer(translist_desc_t* desc)
 
     log_info("Comparing local and remote memory...");
     size_t bytes;
-    if (desc->gpu_device_id != NO_GPU)
+    if (desc->local_gpu_info != NULL)
     {
-        bytes = gpu_memcmp(desc->gpu_device_id, desc->buffer_ptr, remote_ptr, desc->segment_size);
+        bytes = gpu_memcmp(desc->local_gpu_info->id, desc->buffer_ptr, remote_ptr, desc->segment_size);
     }
     else
     {
@@ -109,18 +109,18 @@ void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, re
     {
         case 0:
             memcpy_func = &ram_memcpy_local_to_remote;
-            if (td->gpu_device_id != NO_GPU)
+            if (td->local_gpu_info != NULL)
             {
-                gpu_prepare_memcpy(td->gpu_device_id);
+                gpu_prepare_memcpy(td->local_gpu_info->id);
                 memcpy_func = &gpu_memcpy_local_to_remote;
             }
             break;
 
         case 1:
             memcpy_func = &ram_memcpy_remote_to_local;
-            if (td->gpu_device_id != NO_GPU)
+            if (td->local_gpu_info != NULL)
             {
-                gpu_prepare_memcpy(td->gpu_device_id);
+                gpu_prepare_memcpy(td->local_gpu_info->id);
                 memcpy_func = &gpu_memcpy_remote_to_local;
             }
             break;
@@ -128,9 +128,9 @@ void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, re
         case 2:
         default:
             memcpy_func = &SCIMemWrite_wrapper;
-            if (td->gpu_device_id != NO_GPU)
+            if (td->local_gpu_info != NULL)
             {
-                log_error("SCIMemWrite is specified for local GPU buffer");
+                log_error("SCIMemWrite for local GPU is not implemented because cudaHostAlloc is not used");
                 goto release;
             }
             break;
@@ -237,9 +237,9 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
     uint8_t byte = random_byte_value();
 
     log_debug("Creating buffer and filling with random value %02x", byte);
-    if (tl_desc.gpu_device_id != NO_GPU)
+    if (tl_desc.local_gpu_info != NULL)
     {
-        gpu_memset(tl_desc.gpu_device_id, tl_desc.buffer_ptr, tl_desc.segment_size, byte);
+        gpu_memset(tl_desc.local_gpu_info->id, tl_desc.buffer_ptr, tl_desc.segment_size, byte);
     }
     else
     {
@@ -263,26 +263,17 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
     log_info("Executing benchmark...");
     switch (benchmark->benchmark_mode)
     {
-        case BENCH_DMA_GLOBAL_PUSH_TO_REMOTE:
-            sci_flags |= SCI_FLAG_DMA_GLOBAL;
+        case BENCH_DMA_PULL_FROM_REMOTE:
+            sci_flags |= SCI_FLAG_DMA_READ;
+            fetch_data = 1;
+            /* intentional fall-through */
         case BENCH_DMA_PUSH_TO_REMOTE:
             dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
             break;
 
-        case BENCH_DMA_GLOBAL_PULL_FROM_REMOTE:
-            sci_flags |= SCI_FLAG_DMA_GLOBAL;
-        case BENCH_DMA_PULL_FROM_REMOTE:
-            sci_flags |= SCI_FLAG_DMA_READ;
-            fetch_data = 1;
-            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
-            break;
-
-        default:
-            log_error("%s is not yet supported", bench_mode_name(benchmark->benchmark_mode));
-            return -2;
-
         case BENCH_READ_FROM_REMOTE:
             fetch_data = 1;
+            /* intentional fall-through */
         case BENCH_WRITE_TO_REMOTE:
             pio(benchmark->transfer_list, &tl_desc, fetch_data, benchmark->num_runs, result);
             break;
@@ -294,6 +285,11 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
         case BENCH_DO_NOTHING:
             log_error("No benchmark type is set");
             return -1;
+
+        default:
+            log_error("%s is not yet supported", bench_mode_name(benchmark->benchmark_mode));
+            return -2;
+
     }
     log_info("Benchmark complete, verifying transfer.");
 
@@ -311,9 +307,9 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
 
     // Verify transfer by comparing local and remote buffer
     uint8_t value;
-    if (tl_desc.gpu_device_id != NO_GPU)
+    if (tl_desc.local_gpu_info != NULL)
     {
-        gpu_memcpy_buffer_to_local(tl_desc.gpu_device_id, tl_desc.buffer_ptr, &value, 1);
+        gpu_memcpy_buffer_to_local(tl_desc.local_gpu_info->id, tl_desc.buffer_ptr, &value, 1);
     }
     else
     {

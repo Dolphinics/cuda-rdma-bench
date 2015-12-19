@@ -6,13 +6,14 @@ extern "C" {
 
 #include <sisci_api.h>
 #include <stdlib.h>
+#include "gpu.h"
 
 #ifndef MAX_TRANSLIST_SIZE
-#define MAX_TRANSLIST_SIZE 512
+#define MAX_TRANSLIST_SIZE DIS_DMA_MAX_VECLEN
 #endif
 
 #ifndef TRANSLIST_TIMEOUT_MS
-#define TRANSLIST_TIMEOUT_MS 50
+#define TRANSLIST_TIMEOUT_MS 5000
 #endif
 
 
@@ -30,14 +31,15 @@ typedef struct {
 
 /* Define transfer list descriptor */
 typedef struct {
-    sci_desc_t                  sisci_desc;     // SISCI API descriptor
-    sci_local_segment_t         segment_local;  // local segment handle
-    sci_remote_segment_t        segment_remote; // remote segment handle
-    size_t                      segment_size;   // size of the segment
-    sci_remote_data_interrupt_t interrupt;      // data interrupt
-    sci_remote_interrupt_t      validate;       // remote validation interrupt
-    int                         gpu_device_id;  // CUDA device ID
-    void*                       buffer_ptr;     // pointer to the local buffer
+    sci_desc_t                  sisci_desc;         // SISCI API descriptor
+    sci_local_segment_t         segment_local;      // local segment handle
+    sci_remote_segment_t        segment_remote;     // remote segment handle
+    size_t                      segment_size;       // size of the segment
+    sci_remote_data_interrupt_t interrupt;          // data interrupt
+    sci_remote_interrupt_t      validate;           // remote validation interrupt
+    void*                       buffer_ptr;         // pointer to the local buffer
+    const gpu_info_t*           local_gpu_info;     // local GPU description
+    const gpu_info_t*           remote_gpu_info;    // remote GPU description
 } translist_desc_t;
 
 
