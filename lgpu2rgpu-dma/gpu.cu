@@ -25,6 +25,27 @@ __global__ void gpu_memset_kernel(void* buf, size_t len, uint8_t val)
 }
 
 
+__global__ void gpu_memcmp_kernel(void* local, void* remote, size_t len, uint8_t* result)
+{
+    int num = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int pos = y * (gridDim.x * blockDim.x) + x;
+
+    uint8_t* l_ptr = (uint8_t*) local;
+    uint8_t* r_ptr = (uint8_t*) remote;
+
+    size_t i = pos * (len / num);
+    size_t n = (pos + 1) * (len / num);
+
+    for ( ; i < n && i < len && l_ptr[i] == r_ptr[i]; ++i);
+
+    __syncthreads();
+
+    result[pos] = i == n;
+}
+
+
 extern "C"
 void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
 {
@@ -51,8 +72,53 @@ void gpu_memset(int gpu, void* ptr, size_t len, uint8_t val)
 }
 
 
-extern "C"
-int gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
+// Copy remote buffer to GPU buffer and do memcmp in parallel
+int gpu_memcmp_gpu(int gpu, void* local, void* remote, size_t len)
+{
+    cudaError_t err = cudaSetDevice(gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+        return 0;
+    }
+
+    dim3 grid;
+    grid.x = 4;
+    grid.y = 4;
+
+    dim3 block;
+    block.x = 4;
+    block.y = 4;
+
+    uint8_t* result = NULL;
+    err = cudaHostAlloc(&result, 32, cudaHostAllocMapped);
+    if (err != cudaSuccess)
+    {
+        log_error("Out of resources: %s", cudaGetErrorString(err));
+        cudaFreeHost(result);
+        return 0;
+    }
+
+    size_t i = 0, n = 256;
+    for ( ; i < n; ++i)
+    {
+        result[i] = 0;
+    }
+
+    log_debug("Comparing local GPU memory %p to copied memory %p", local, remote);
+    gpu_memcmp_kernel<<<grid, block>>>(local, remote, len, result);
+
+    cudaDeviceSynchronize();
+
+    for (i = 0; i < n && result[i] != 0; ++i);
+
+    cudaFreeHost(result);
+    return i != n;
+}
+
+
+// Copy GPU-bound buffer to RAM and do regular memcmp
+int gpu_memcmp_ram(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 {
     cudaError_t err = cudaSetDevice(gpu);
     if (err != cudaSuccess)
@@ -85,6 +151,42 @@ int gpu_memcmp(int gpu, void* gpuptr, volatile void* ramptr, size_t len)
 
     cudaFreeHost(buf);
     return equality;
+}
+
+
+extern "C"
+int gpu_memcmp(int gpu, void* local, volatile void* remote, size_t len)
+{
+    cudaError_t err = cudaSetDevice(gpu);
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+        return 0;
+    }
+
+    cudaDeviceSynchronize();
+
+    void* buf = NULL;
+    err = cudaMalloc(&buf, len);
+
+    if (err != cudaSuccess)
+    {
+        log_debug("Failed to allocate buffer on device, falling back on memcmp");
+        return gpu_memcmp_ram(gpu, local, remote, len);
+    }
+
+    err = cudaMemcpy(buf, (void*) remote, len, cudaMemcpyHostToDevice);
+
+    if (err != cudaSuccess)
+    {
+        log_error("Failed to copy from remote buffer to GPU buffer, falling back on memcmp");
+        cudaFree(buf);
+        return gpu_memcmp_ram(gpu, local, remote, len);
+    }
+
+    int result = gpu_memcmp_gpu(gpu, local, buf, len);
+    cudaFree(buf);
+    return result;
 }
 
 
