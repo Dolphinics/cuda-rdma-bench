@@ -105,7 +105,7 @@ int gpu_memcmp_gpu(int gpu, void* local, void* remote, size_t len)
         result[i] = 0;
     }
 
-    log_debug("Comparing local GPU memory %p to copied memory %p", local, remote);
+    log_debug("Comparing local GPU memory %p to GPU-copied memory %p", local, remote);
     gpu_memcmp_kernel<<<grid, block>>>(local, remote, len, result);
 
     cudaDeviceSynchronize();
@@ -175,6 +175,7 @@ int gpu_memcmp(int gpu, void* local, volatile void* remote, size_t len)
         return gpu_memcmp_ram(gpu, local, remote, len);
     }
 
+    log_debug("Copying remote memory to local GPU buffer...");
     err = cudaMemcpy(buf, (void*) remote, len, cudaMemcpyHostToDevice);
 
     if (err != cudaSuccess)

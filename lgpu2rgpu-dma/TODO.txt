@@ -1,4 +1,3 @@
-1) Make client only output buffer on reads and only trigger interrupt on writes
 
 2) Make buffer output and verification optional --verify (needs "re-lettering"
    for args)

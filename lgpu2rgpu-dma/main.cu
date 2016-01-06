@@ -141,7 +141,7 @@ static void give_usage(const char* progname)
             "  --size=<size>            memory size in MB (or MiB if --iec is set)\n"
             "\nClient mode arguments\n"
             "  --type=<bencmark type>   specify benchmark type\n"
-            "  --remote-node=<node id>  remote cluster node ID\n"
+            "  --remote-node=<node id>  remote node identifier\n"
             "  --remote-id=<segment id> number identifying the remote segment\n"
             "  --count=<number>         number of times to repeat test (defaults to 1)\n"
             "\nDMA vector options (client mode)\n"
@@ -214,7 +214,7 @@ int main(int argc, char** argv)
                 local_adapter = strtoul(optarg, &str, 10);
                 if (str == NULL || *str != '\0')
                 {
-                    log_error("Argument %s must be a valid adapter number", argv[optind-1]);
+                    log_error("Argument --adapter must be a valid adapter number");
                     exit('a');
                 }
                 break;
@@ -224,7 +224,7 @@ int main(int argc, char** argv)
                 remote_node_id = strtoul(optarg, &str, 10);
                 if (str == NULL || *str != '\0' || remote_node_id == NO_NODE)
                 {
-                    log_error("Argument %s must be a valid cluster node ID", argv[optind-1]);
+                    log_error("Argument --remote-node must be a valid node identifier");
                     exit('n');
                 }
                 break;
@@ -234,7 +234,7 @@ int main(int argc, char** argv)
                 local_segment_id = strtoul(optarg, &str, 0);
                 if (str == NULL || *str != '\0')
                 {
-                    log_error("Argument %s must be a valid segment ID", argv[optind-1]);
+                    log_error("Argument --local-id must be a valid segment identifier");
                     exit('l');
                 }
                 break;
@@ -244,7 +244,7 @@ int main(int argc, char** argv)
                 remote_segment_id = strtoul(optarg, &str, 0);
                 if (str == NULL || *str != '\0')
                 {
-                    log_error("Argument %s must be a valid segment ID", argv[optind-1]);
+                    log_error("Argument --remote-id must be a valid segment identifier");
                     exit('r');
                 }
                 break;
@@ -254,7 +254,7 @@ int main(int argc, char** argv)
                 local_segment_count = strtoul(optarg, &str, 0);
                 if (str == NULL || *str != '\0' || local_segment_count == 0)
                 {
-                    log_error("Argument %s must be a valid segment size in %s", argv[optind-1], local_segment_factor == 1e3 ? "MB" : "MiB");
+                    log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e3 ? "MB" : "MiB");
                     exit('s');
                 }
                 break;
@@ -264,7 +264,7 @@ int main(int argc, char** argv)
                 local_gpu_id = strtol(optarg, &str, 10);
                 if (str == NULL || *str != '\0' || local_gpu_id < 0)
                 {
-                    log_error("Argument %s must be a valid GPU number", argv[optind-1]);
+                    log_error("Argument --gpu must be a valid GPU number");
                     exit('g');
                 }
                 break;
@@ -273,7 +273,7 @@ int main(int argc, char** argv)
                 mode = bench_mode_from_name(optarg);
                 if (mode == BENCH_DO_NOTHING)
                 {
-                    log_error("Argument %s must be a valid benchmark type", argv[optind-1]);
+                    log_error("Argument --type must be a valid benchmark type, see --help for a list of valid types");
                     exit('m');
                 }
                 break;
@@ -283,7 +283,7 @@ int main(int argc, char** argv)
                 repeat_count = strtoul(optarg, &str, 10);
                 if (str == NULL || *str != '\0' || repeat_count == 0)
                 {
-                    log_error("Argument %s must be at least 1", argv[optind-1]);
+                    log_error("Argument --count must be at least 1");
                     exit('c');
                 }
                 break;
@@ -322,7 +322,7 @@ int main(int argc, char** argv)
     /* Sanity checking */
     if (remote_node_id == NO_NODE && local_segment_count == 0)
     {
-        log_error("Either segment size or remote node ID must be specified");
+        log_error("Either segment size or remote node identifier must be specified");
         give_usage(argv[0]);
         exit(1);
     }
