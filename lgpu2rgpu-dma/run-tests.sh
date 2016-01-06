@@ -1,11 +1,11 @@
 #!/bin/bash
 
 bin=lgpu2rgpu-dma
-max_log_lines=10
+max_log_lines=50
 filename=$1
 remote_host=$2
 remote_node=$3
-modes="dma-push dma-pull"
+modes="dma-push dma-pull scimemwrite scimemcpy-write scimemcpy-read write read"
 
 if [ "$USER" != "root" ]; then
 	>&2 echo "You must be root!"
@@ -81,12 +81,12 @@ function run_test {
 	# Copy client log
 	echo >> $filename
 	echo $local_host >> $filename
-	#dmesg -c | head -n $max_log_lines >> $filename
+	dmesg -c | head -n $max_log_lines >> $filename
 
 	# Copy server log
 	echo >> $filename
 	echo $remote_host >> $filename
-	#ssh $remote_host "dmesg -c | head -n $max_log_lines" >> $filename
+	ssh $remote_host "dmesg -c | head -n $max_log_lines" >> $filename
 
 	ssh $remote_host "killall ${bin}.$$" &> /dev/null
 
