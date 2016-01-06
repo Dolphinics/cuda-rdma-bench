@@ -130,8 +130,8 @@ static const char* bench_descriptions[] = {
     "use SCIMemWrite to write data to remote host",
     "use SCIMemCpy to write data to remote host",
     "use SCIMemCpy to read data from remote host",
-    "use memcpy to write data to remote host",
-    "use memcpy to read data from remote host",
+    "use glibc memcpy / cudaMemcpy to write data to remote host",
+    "use glibc memcpy / cudaMemcpy to read data from remote host",
     "use data interrupts to send data to remote host",
     NULL
 };
