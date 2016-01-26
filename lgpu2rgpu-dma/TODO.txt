@@ -1,4 +1,11 @@
 
+IMPORTANT: Implement RegisterSegmentMemory and global DMA testing
+
+
+
+
+
+
 2) Make buffer output and verification optional --verify (needs "re-lettering"
    for args)
 
@@ -24,3 +31,5 @@
 	- mem ptr vs buf ptr etc
 
 7) make GPU descriptor type? or GPU memory descriptor type?
+
+
