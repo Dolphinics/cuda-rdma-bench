@@ -254,7 +254,7 @@ int main(int argc, char** argv)
                 local_segment_count = strtoul(optarg, &str, 0);
                 if (str == NULL || *str != '\0' || local_segment_count == 0)
                 {
-                    log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e3 ? "MB" : "MiB");
+                    log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e6 ? "MB" : "MiB");
                     exit('s');
                 }
                 break;
