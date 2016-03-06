@@ -9,44 +9,38 @@
 #include <cuda.h>
 
 
-enum 
-{
-    CREATE = 0,
-    ATTACH,
-    NUM_FLAGS
-};
-
-
 // Export list entry
+// Used to keep track of which adapters the segment is exported on
 struct export
 {
-    unsigned            adapter_no; // the adapter the segment is exported on
-    unsigned            flags;      // the SISCI flags used for SCIPrepareSegment
-    unsigned            available;  // has SCISetSegmentAvailable been called
+    unsigned adapt_no; // the adapter the segment is exported on
+    unsigned flags;      // the SISCI flags used for SCIPrepareSegment
+    unsigned available;  // has SCISetSegmentAvailable been called
 };
 
 
 // Internal structure holding the local segment descriptor and its state
 struct local_segment
 {
-    unsigned            created     : 1,        // was the sci_desc_t descriptor opened?
-                        attached    : 1,        // was SCICreateSegment successfylly called?
-                        rw_mapped   : 1,        // was SCIMapLocalSegment with read-only called?
-                        ro_mapped   : 1;        // was SCIMapLocalSegment without read-only called?
-
-    sci_desc_t          sci_d;          
-    unsigned            seg_id;
-    sci_local_segment_t seg_d;
-    unsigned            sci_flags[NUM_FLAGS];   // additional SISCI flags
-    size_t              seg_sz;
-    sci_map_t           ro_map;
-    void*               ro_ptr;
-    sci_map_t           rw_map;
-    void*               rw_ptr;
-    struct export       exports[MAX_EXPORTS];
+    unsigned            created   : 1,  // SCIOpen succeeded
+                        attached  : 1,  // SCICreateSegment succeeded
+                        rw_mapped : 1,  // SCIMapLocalSegment w/ RO succeeded
+                        ro_mapped : 1;  // SCIMapLocalSegment succeeded
+    sci_desc_t          sci_d;          // SISCI descriptor
+    sci_local_segment_t seg_d;          // local segment descriptor
+    unsigned            seg_id;         // local segment identifier
+    size_t              seg_sz;         // size of local segment
+    unsigned            fl_create;      // additional flags passed do SCICreateSegment
+    unsigned            fl_attach;      // additional flags passed to SCIAttachPhysicalMemory
+    sci_map_t           ro_map;         // map descriptor for RO memory
+    const void*         ro_ptr;         // pointer to mapped RO memory
+    sci_map_t           rw_map;         // map descriptor for RW memory
+    void*               rw_ptr;         // pointer to mapped RW memory
+    struct export       exports[MAX_EXPORTS]; // export list
 };
 
 
+// Empty the internal structure
 static void clear_handle(l_segment_t handle)
 {
     handle->created = 0;
@@ -58,15 +52,13 @@ static void clear_handle(l_segment_t handle)
     handle->seg_sz = 0;
     handle->ro_ptr = NULL;
     handle->rw_ptr = NULL;
-    
-    for (size_t i = 0; i < NUM_FLAGS; ++i)
-    {
-        handle->sci_flags[i] = 0;
-    }
+
+    handle->fl_create = 0;
+    handle->fl_attach = 0;
 
     for (size_t i = 0; i < MAX_EXPORTS; ++i)
     {
-        handle->exports[i].adapter_no = UINT_MAX;
+        handle->exports[i].adapt_no = UINT_MAX;
         handle->exports[i].flags = 0;
         handle->exports[i].available = 0;
     }
@@ -96,7 +88,7 @@ int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
 
     clear_handle(handle);
     handle->seg_id = segmentId;
-    handle->sci_flags[CREATE] = flags;
+    handle->fl_create = flags;
     handle->created = 1;
 
     *segment = handle;
@@ -106,7 +98,7 @@ int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
 }
 
 
-int AllocSegmentMem(l_segment_t segment, size_t size, unsigned flags)
+int AllocSegmentMem(l_segment_t segment, size_t size)
 {
     if (!segment->created)
     {
@@ -118,15 +110,10 @@ int AllocSegmentMem(l_segment_t segment, size_t size, unsigned flags)
         error("Segment already alloc'd/attached");
         return -1;
     }
-    else if (flags != 0)
-    {
-        debug("flags will not be used in AllocSegment");
-        return -1;
-    }
 
     sci_error_t err;
 
-    SCICreateSegment(segment->sci_d, &segment->seg_d, segment->seg_id, size, NULL, NULL, segment->sci_flags[CREATE], &err);
+    SCICreateSegment(segment->sci_d, &segment->seg_d, segment->seg_id, size, NULL, NULL, segment->fl_create, &err);
     if (err != SCI_ERR_OK)
     {
         error("Failed to create segment: %s", GetErrorString(err));
@@ -134,7 +121,7 @@ int AllocSegmentMem(l_segment_t segment, size_t size, unsigned flags)
     }
 
     segment->seg_sz = size;
-    segment->sci_flags[ATTACH] = 0;
+    segment->fl_attach = 0;
     segment->attached = 1;
 
     debug("Allocated memory for segment %u", segment->seg_id);
@@ -142,7 +129,7 @@ int AllocSegmentMem(l_segment_t segment, size_t size, unsigned flags)
 }
 
 
-int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size, unsigned flags)
+int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
 {
     if (!segment->created)
     {
@@ -164,15 +151,15 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size, unsigned fl
 
     sci_error_t err;
 
-    segment->sci_flags[CREATE] |= SCI_FLAG_EMPTY;
-    SCICreateSegment(segment->sci_d, &segment->seg_d, segment->seg_id, size, NULL, NULL, segment->sci_flags[CREATE] | flags, &err);
+    segment->fl_create |= SCI_FLAG_EMPTY;
+    SCICreateSegment(segment->sci_d, &segment->seg_d, segment->seg_id, size, NULL, NULL, segment->fl_create, &err);
     if (err != SCI_ERR_OK)
     {
         error("Failed to create segment: %s", GetErrorString(err));
         return -1;
     }
 
-    SCIAttachPhysicalMemory(0, devicePtr, 0, size, segment->seg_d, SCI_FLAG_CUDA_BUFFER | flags, &err);
+    SCIAttachPhysicalMemory(0, devicePtr, 0, size, segment->seg_d, SCI_FLAG_CUDA_BUFFER, &err);
     if (err != SCI_ERR_OK)
     {
         error("Failed to attach physical memory: %s", GetErrorString(err));
@@ -181,7 +168,7 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size, unsigned fl
     }
 
     segment->seg_sz = size;
-    segment->sci_flags[ATTACH] = flags;
+    segment->fl_attach = 0;
     segment->attached = 1;
 
     debug("Attached memory for segment %u", segment->seg_id);
@@ -201,7 +188,7 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
 
     for (export_idx = 0; export_idx < MAX_EXPORTS; ++export_idx)
     {
-        if (segment->exports[export_idx].adapter_no == UINT_MAX || segment->exports[export_idx].adapter_no == adapterNo)
+        if (segment->exports[export_idx].adapt_no == UINT_MAX || segment->exports[export_idx].adapt_no == adapterNo)
         {
             break;
         }
@@ -213,7 +200,7 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
         return -1;
     }
 
-    if (segment->exports[export_idx].adapter_no == adapterNo)
+    if (segment->exports[export_idx].adapt_no == adapterNo)
     {
         debug("Segment %u was already exported on adapter %u", segment->seg_id, adapterNo);
     }
@@ -228,7 +215,7 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
     }
 
     struct export* export = &segment->exports[export_idx];
-    export->adapter_no = adapterNo;
+    export->adapt_no = adapterNo;
     export->flags = flags;
     
     SCISetSegmentAvailable(segment->seg_d, adapterNo, 0, &err);
@@ -257,7 +244,7 @@ int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
 
     for (export_idx = 0; export_idx < MAX_EXPORTS; ++export_idx)
     {
-        if (segment->exports[export_idx].adapter_no == adapterNo)
+        if (segment->exports[export_idx].adapt_no == adapterNo)
         {
             break;
         }
@@ -330,9 +317,9 @@ int RemoveLocalSegment(l_segment_t segment)
     {
         for (size_t i = 0; i < MAX_EXPORTS; ++i)
         {
-            if (segment->exports[i].adapter_no != UINT_MAX && segment->exports[i].available)
+            if (segment->exports[i].adapt_no != UINT_MAX && segment->exports[i].available)
             {
-                UnexportLocalSegment(segment, segment->exports[i].adapter_no);
+                UnexportLocalSegment(segment, segment->exports[i].adapt_no);
             }
         }
 
@@ -421,7 +408,7 @@ const void* GetLocalSegmentPtrRO(l_segment_t segment)
             return NULL;
         }
 
-        segment->rw_mapped = 1;
+        segment->ro_mapped = 1;
         debug("Mapped segment %u into virtual memory at address %p", segment->seg_id, segment->ro_ptr);
     }
 

@@ -24,14 +24,16 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    void* ptr = GetLocalSegmentPtr(segment);
+    int* ptr = (int*) GetLocalSegmentPtr(segment);
     if (ptr == NULL)
     {
         RemoveLocalSegment(segment);
         return 1;
     }
 
-    puts("It works");
+    *ptr = 0xdeadbeef;
+
+    printf("%x\n", *ptr);
     
     RemoveLocalSegment(segment);
     SCITerminate();

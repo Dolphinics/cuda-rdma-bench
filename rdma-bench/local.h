@@ -7,6 +7,9 @@ extern "C" {
 #include <stdlib.h>
 #include <stdint.h>
 
+// FIXME: What about Shared segments?
+
+
 /**
  * Maximum number of exports of a local segment.
  */
@@ -17,8 +20,8 @@ extern "C" {
  *
  * Handle for the internal local segment descriptor. 
  *
- * \note This type serves as a simplified wrapper for the 
- *       \c sci_local_segment_t SISCI type
+ * \note This type serves as a simplified handle type for the 
+ *       \c sci_local_segment_t SISCI type.
  */
 typedef struct local_segment* l_segment_t;
 
@@ -26,7 +29,7 @@ typedef struct local_segment* l_segment_t;
 /**
  * \brief Create a local segment
  *
- *  Create a local segment and initialise the local segment descriptor.
+ *  Create a local segment and initialize the local segment descriptor.
  *
  * \param[out]  segment     segment descriptor handle
  * \param[in]   segmentId   unique (for this node) segment identifier
@@ -57,11 +60,10 @@ int RemoveLocalSegment(l_segment_t segment);
  *
  * \param[in]   segment     segment descriptor handle
  * \param[in]   size        size of the memory range
- * \param[in]   flags       not used
  *
  * \returns \c 0 on success
  */
-int AllocSegmentMem(l_segment_t segment, size_t size, unsigned flags);
+int AllocSegmentMem(l_segment_t segment, size_t size);
 
 
 /**
@@ -87,11 +89,10 @@ int AttachPhysAddr(l_segment_t segment, uintptr_t addr, size_t size, unsigned fl
  * \param[in]   segment     segment descriptor handle
  * \param[in]   ptr         pointer to the start of the virtual address range
  * \param[in]   size        size of the memory range
- * \param[in]   flags       additonal flags for \c SCIRegisterSegmentMemory
  *
  * \returns \c 0 on success
  */
-int AttachVirtMem(l_segment_t segment, void* ptr, size_t size, unsigned flags);
+int AttachVirtMem(l_segment_t segment, void* ptr, size_t size);
 
 
 /**
@@ -102,7 +103,6 @@ int AttachVirtMem(l_segment_t segment, void* ptr, size_t size, unsigned flags);
  * \param[in]   segment     segment descriptor handle
  * \param[in]   devicePtr   a CUDA \c devicePointer 
  * \param[in]   size        size of the memory range
- * \param[in]   flags       additional flags for \c SCIAttachPhysicalMemory
  *
  * \returns \c 0 on success
  *
@@ -114,7 +114,7 @@ int AttachVirtMem(l_segment_t segment, void* ptr, size_t size, unsigned flags);
  *
  * \note SISCI driver must be built with CUDA support.
  */
-int AttachCudaMem(l_segment_t segment, void* cudaPtr, size_t size, unsigned flags);
+int AttachCudaMem(l_segment_t segment, void* cudaPtr, size_t size);
 
 
 /**
