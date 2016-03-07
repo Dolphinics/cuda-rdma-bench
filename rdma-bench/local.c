@@ -22,8 +22,7 @@ struct export
 // Internal structure holding the local segment descriptor and its state
 struct local_segment
 {
-    unsigned            created   : 1,  // SCIOpen succeeded
-                        attached  : 1,  // SCICreateSegment succeeded
+    unsigned            attached  : 1,  // SCICreateSegment succeeded
                         rw_mapped : 1,  // SCIMapLocalSegment w/ RO succeeded
                         ro_mapped : 1;  // SCIMapLocalSegment succeeded
     sci_desc_t          sci_d;          // SISCI descriptor
@@ -43,7 +42,6 @@ struct local_segment
 // Empty the internal structure
 static void clear_handle(l_segment_t handle)
 {
-    handle->created = 0;
     handle->attached = 0;
     handle->rw_mapped = 0;
     handle->ro_mapped = 0;
@@ -67,8 +65,7 @@ static void clear_handle(l_segment_t handle)
 
 int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
 {
-    *segment = NULL;
-
+    // FIXME: Return errnos for errors
     l_segment_t handle = (l_segment_t) malloc(sizeof(struct local_segment));
     if (handle == NULL)
     {
@@ -76,6 +73,7 @@ int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
         return -1;
     }
 
+    clear_handle(handle);
     sci_error_t err;
 
     SCIOpen(&handle->sci_d, 0, &err);
@@ -86,10 +84,8 @@ int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
         return -1;
     }
 
-    clear_handle(handle);
     handle->seg_id = segmentId;
     handle->fl_create = flags;
-    handle->created = 1;
 
     *segment = handle;
     
@@ -100,12 +96,9 @@ int CreateLocalSegment(l_segment_t* segment, unsigned segmentId, unsigned flags)
 
 int AllocSegmentMem(l_segment_t segment, size_t size)
 {
-    if (!segment->created)
-    {
-        error("Segment descriptor not initialized");
-        return -1;
-    }
-    else if (segment->attached)
+    // FIXME: Return errnos for errors
+
+    if (segment->attached)
     {
         error("Segment already alloc'd/attached");
         return -1;
@@ -124,6 +117,7 @@ int AllocSegmentMem(l_segment_t segment, size_t size)
     segment->fl_attach = 0;
     segment->attached = 1;
 
+    // TODO: Log ioaddr of segment
     debug("Allocated memory for segment %u", segment->seg_id);
     return 0;
 }
@@ -131,12 +125,9 @@ int AllocSegmentMem(l_segment_t segment, size_t size)
 
 int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
 {
-    if (!segment->created)
-    {
-        error("Segment descriptor not initialized");
-        return -1;
-    }
-    else if (segment->attached)
+    // FIXME: Return errnos for errors
+
+    if (segment->attached)
     {
         error("Segment already alloc'd/attached");
         return -1;
@@ -171,6 +162,7 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
     segment->fl_attach = 0;
     segment->attached = 1;
 
+    // TODO: Log ioaddr of segment
     debug("Attached memory for segment %u", segment->seg_id);
     return 0;
 }
@@ -178,6 +170,9 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
 
 int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
 {
+    // FIXME: Return errnos for errors
+    // TODO: Refactor this function, it is ugly
+    
     if (!segment->attached)
     {
         error("Segment has not been alloc'd/attached");
@@ -234,6 +229,9 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
 
 int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
 {
+    // FIXME: Return errnos for errors
+    // TODO: refactor this function, it is ugly
+    
     if (!segment->attached)
     {
         error("Segment has not been alloc'd/attached");
@@ -283,6 +281,8 @@ int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
 
 int RemoveLocalSegment(l_segment_t segment)
 {
+    // FIXME: Return errnos for errors
+    
     sci_error_t err;
 
     if (segment->ro_mapped)
@@ -335,17 +335,13 @@ int RemoveLocalSegment(l_segment_t segment)
         }
     }
 
-    if (segment->created)
+    SCIClose(segment->sci_d, 0, &err);
+    if (err != SCI_ERR_OK)
     {
-        SCIClose(segment->sci_d, 0, &err);
-        if (err != SCI_ERR_OK)
-        {
-            error("Failed to close descriptor: %s", GetErrorString(err));
-        }
+        error("Failed to close descriptor: %s", GetErrorString(err));
     }
 
     free(segment);
-
     return 0;
 }
 
@@ -378,11 +374,14 @@ void* GetLocalSegmentPtr(l_segment_t segment)
         if (err != SCI_ERR_OK)
         {
             error("Failed to map local segment: %s", GetErrorString(err));
-            return NULL;
+            segment->rw_ptr = NULL;
+        }
+        else
+        {
+            debug("Mapped segment %u into virtual memory at address %p", segment->seg_id, segment->rw_ptr);
         }
 
         segment->rw_mapped = 1;
-        debug("Mapped segment %u into virtual memory at address %p", segment->seg_id, segment->rw_ptr);
     }
 
     return segment->rw_ptr;
@@ -405,11 +404,14 @@ const void* GetLocalSegmentPtrRO(l_segment_t segment)
         if (err != SCI_ERR_OK)
         {
             error("Failed to map local segment: %s", GetErrorString(err));
-            return NULL;
+            segment->ro_ptr = NULL;
+        }
+        else
+        {
+            debug("Mapped segment %u into virtual memory at address %p", segment->seg_id, segment->ro_ptr);
         }
 
         segment->ro_mapped = 1;
-        debug("Mapped segment %u into virtual memory at address %p", segment->seg_id, segment->ro_ptr);
     }
 
     return segment->ro_ptr;

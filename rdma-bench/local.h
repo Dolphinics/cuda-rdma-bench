@@ -7,13 +7,10 @@ extern "C" {
 #include <stdlib.h>
 #include <stdint.h>
 
-// FIXME: What about Shared segments?
-
-
-/**
- * Maximum number of exports of a local segment.
- */
+#ifndef MAX_EXPORTS
 #define MAX_EXPORTS 16
+#endif
+
 
 /**
  * \brief Local segment descriptor handle

@@ -33,7 +33,8 @@ unsigned GetNodeIdByName(const char* hostname);
  */
 const char* GetErrorString(sci_error_t code);
 
-#define GetErrStr(code) GetErrorString((code))
+
+// TODO: copy ioaddr functions from before
 
 
 #ifdef __cplusplus

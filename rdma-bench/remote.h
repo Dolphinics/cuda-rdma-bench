@@ -24,16 +24,14 @@ typedef struct remote_segment* r_segment_t;
  * Connect to a remote segment and initialize the remote segment descriptor.
  * This function will block until the remote segment becomes available.
  *
- * \param[out]  segment     segment descriptor handle
- * \param[in]   adapterNo   indentifier for the local adapter the remote node is connected to
- * \param[in]   remoteNode  remote node identifier
- * \param[in]   segmentId   unique remote segment identifier
+ * \param[out]  segment         segment descriptor handle
+ * \param[in]   adapterNo       indentifier for the local adapter the remote node is connected to
+ * \param[in]   remoteNodeId    remote node identifier
+ * \param[in]   segmentId       unique remote segment identifier
  *
  * \returns \c 0 on success
  */
-int ConnectRemoteSegment(r_segment_t* segment, unsigned adapterNo, unsigned remoteNode, unsigned segmentId);
-
-// TODO: Custom connect function for broadcast ConnectBroadcastSegment or something, maybe even in a broadcast.h file
+int ConnectRemoteSegment(r_segment_t* segment, unsigned adapterNo, unsigned remoteNodeId, unsigned segmentId);
 
 
 /**
@@ -42,7 +40,7 @@ int ConnectRemoteSegment(r_segment_t* segment, unsigned adapterNo, unsigned remo
  * Disconnect from a remote segment and clean up local resources.
  * This function destroys the remote segment descriptor.
  *
- * \param[in]   segment     segment descriptor handle
+ * \param[in]   segment         segment descriptor handle
  *
  * \returns \c 0 on success
  */
@@ -54,7 +52,7 @@ int DisconnectRemoteSegment(r_segment_t segment);
  *
  * Get the size of the remote segment.
  *
- * \param[in]   segment     segment descriptor handle
+ * \param[in]   segment         segment descriptor handle
  *
  * \returns size of the segment in bytes or \c 0 on error
  */
@@ -66,7 +64,7 @@ size_t GetRemoteSegmentSize(r_segment_t segment);
  *
  * Map remote segment memory into virtual memory and return a pointer to it.
  *
- * \param[in]   segment     segment descriptor handle
+ * \param[in]   segment         segment descriptor handle
  *
  * \returns a memory mapped pointer or \c NULL on error
  */
@@ -78,17 +76,15 @@ void* GetRemoteSegmentPtr(r_segment_t segment);
  *
  * Map segment memory into read-only memory and return a pointer to it.
  *
- * \param[in]   segment     segment descriptor handle
+ * \param[in]   segment         segment descriptor handle
  * 
  * \returns a memory mapped pointer or \c NULL on error
  */
 const void* GetRemoteSegmentPtrRO(r_segment_t segment);
 
-
-// TODO: Custom functions for broadcast memory
-
+// TODO: Custom functions for broadcast ConnectBroadcastSegment or something, maybe even in a broadcast.h file
 
 #ifdef __cplusplus
-extern "C" }
+}
 #endif
 #endif
