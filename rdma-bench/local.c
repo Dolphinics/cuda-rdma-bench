@@ -13,9 +13,9 @@
 // Used to keep track of which adapters the segment is exported on
 struct export
 {
-    unsigned adapt_no; // the adapter the segment is exported on
-    unsigned flags;      // the SISCI flags used for SCIPrepareSegment
-    unsigned available;  // has SCISetSegmentAvailable been called
+    unsigned adapt_no;  // the adapter the segment is exported on
+    unsigned flags;     // the SISCI flags used for SCIPrepareSegment
+    unsigned available; // has SCISetSegmentAvailable been called
 };
 
 
@@ -168,38 +168,9 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
 }
 
 
-int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
+// Helper function to export a segment
+static int export_segment(struct export* export, l_segment_t segment, unsigned adapterNo, unsigned flags)
 {
-    // FIXME: Return errnos for errors
-    // TODO: Refactor this function, it is ugly
-    
-    if (!segment->attached)
-    {
-        error("Segment has not been alloc'd/attached");
-        return -1;
-    }
-
-    size_t export_idx;
-
-    for (export_idx = 0; export_idx < MAX_EXPORTS; ++export_idx)
-    {
-        if (segment->exports[export_idx].adapt_no == UINT_MAX || segment->exports[export_idx].adapt_no == adapterNo)
-        {
-            break;
-        }
-    }
-
-    if (export_idx == MAX_EXPORTS)
-    {
-        error("Maximum number of exports for local segment %u reached", segment->seg_id);
-        return -1;
-    }
-
-    if (segment->exports[export_idx].adapt_no == adapterNo)
-    {
-        debug("Segment %u was already exported on adapter %u", segment->seg_id, adapterNo);
-    }
-
     sci_error_t err;
 
     SCIPrepareSegment(segment->seg_d, adapterNo, flags, &err);
@@ -209,10 +180,9 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
         return -1;
     }
 
-    struct export* export = &segment->exports[export_idx];
     export->adapt_no = adapterNo;
     export->flags = flags;
-    
+
     SCISetSegmentAvailable(segment->seg_d, adapterNo, 0, &err);
     if (err != SCI_ERR_OK)
     {
@@ -227,45 +197,20 @@ int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
 }
 
 
-int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
+// Helper function to unexport a segment
+static int unexport_segment(struct export* export, l_segment_t segment)
 {
-    // FIXME: Return errnos for errors
-    // TODO: refactor this function, it is ugly
-    
-    if (!segment->attached)
+    if (!export->available)
     {
-        error("Segment has not been alloc'd/attached");
-        return -1;
-    }
-
-    size_t export_idx;
-
-    for (export_idx = 0; export_idx < MAX_EXPORTS; ++export_idx)
-    {
-        if (segment->exports[export_idx].adapt_no == adapterNo)
-        {
-            break;
-        }
-    }
-
-    if (export_idx == MAX_EXPORTS)
-    {
-        warn("Local segment %u was not exported on adapter %u", segment->seg_id, adapterNo);
-        return -1;
-    }
-
-    if (!segment->exports[export_idx].available)
-    {
-        debug("Segment %u was already unexported on adapter %u", segment->seg_id, adapterNo);
-        return 0;
+        debug("Segment %u was already unexported on adapter %u", segment->seg_id, export->adapt_no);
     }
 
     sci_error_t err;
 
     do
     {
-        //SCISetSegmentUnavailable(segment->seg_d, adapterNo, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
-        SCISetSegmentUnavailable(segment->seg_d, adapterNo, 0, &err);
+        //SCISetSegmentUnavailable(segment->seg_d, export->adapt_no, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
+        SCISetSegmentUnavailable(segment->seg_d, export->adapt_no, 0, &err);
     }
     while (err == SCI_ERR_BUSY);
 
@@ -275,8 +220,56 @@ int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
         return -1;
     }
 
-    debug("Segment %u unexported on adapter %u", segment->seg_id, adapterNo);
+    export->available = 0;
+
+    debug("Segment %u unexported on adapter %u", segment->seg_id, export->adapt_no);
     return 0;
+}
+
+
+int ExportLocalSegment(l_segment_t segment, unsigned adapterNo, unsigned flags)
+{
+    // FIXME: Return errnos for errors
+    
+    if (!segment->attached)
+    {
+        error("Segment has not been alloc'd/attached");
+        return -1;
+    }
+
+    for (size_t idx = 0; idx < MAX_EXPORTS; ++idx)
+    {
+        if (segment->exports[idx].adapt_no == UINT_MAX || segment->exports[idx].adapt_no == adapterNo)
+        {
+            return export_segment(&segment->exports[idx], segment, adapterNo, flags);
+        }
+    }
+
+    error("Maximum number of exports for local segment %u reached", segment->seg_id);
+    return -1;
+}
+
+
+int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
+{
+    // FIXME: Return errnos for errors
+    
+    if (!segment->attached)
+    {
+        error("Segment has not been alloc'd/attached");
+        return -1;
+    }
+
+    for (size_t idx = 0; idx < MAX_EXPORTS; ++idx)
+    {
+        if (segment->exports[idx].adapt_no == adapterNo)
+        {
+            return unexport_segment(&segment->exports[idx], segment);
+        }
+    }
+
+    warn("Local segment %u was not exported on adapter %u", segment->seg_id, adapterNo);
+    return -1;
 }
 
 
@@ -320,7 +313,7 @@ int RemoveLocalSegment(l_segment_t segment)
         {
             if (segment->exports[i].adapt_no != UINT_MAX && segment->exports[i].available)
             {
-                UnexportLocalSegment(segment, segment->exports[i].adapt_no);
+                unexport_segment(&segment->exports[i], segment);
             }
         }
 

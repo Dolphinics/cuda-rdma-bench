@@ -1,4 +1,5 @@
 #include <sisci_api.h>
+#include "util.h"
 #include "log.h"
 
 
