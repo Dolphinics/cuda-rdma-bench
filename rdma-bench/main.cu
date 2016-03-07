@@ -52,6 +52,8 @@ int server()
 
     *ptr = 0xdeadbeef;
 
+    ExportLocalSegment(segment, 0, 0);
+
     while (keep_running)
     {
         printf("%x\n", *ptr);
