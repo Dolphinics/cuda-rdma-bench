@@ -23,6 +23,14 @@ int client(unsigned node)
         return 1;
     }
 
+    int* ptr = (int*) GetRemoteSegmentPtr(segment);
+
+    printf("%x\n", *ptr);
+
+    *ptr = 0xb00bbabe;
+
+    printf("%x\n", *ptr);
+
     DisconnectRemoteSegment(segment);
     return 0;
 }

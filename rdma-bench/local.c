@@ -264,7 +264,8 @@ int UnexportLocalSegment(l_segment_t segment, unsigned adapterNo)
 
     do
     {
-        SCISetSegmentUnavailable(segment->seg_d, adapterNo, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
+        //SCISetSegmentUnavailable(segment->seg_d, adapterNo, SCI_FLAG_NOTIFY | SCI_FLAG_FORCE_DISCONNECT, &err);
+        SCISetSegmentUnavailable(segment->seg_d, adapterNo, 0, &err);
     }
     while (err == SCI_ERR_BUSY);
 
