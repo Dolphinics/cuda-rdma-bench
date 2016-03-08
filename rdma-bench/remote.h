@@ -5,17 +5,7 @@ extern "C" {
 #endif
 
 #include <stdlib.h>
-
-
-/**
- * \briev Remote segment descriptor handle
- *
- * Handle for the internal remote segment descriptor.
- *
- * \note This type serves as as simplified handle type for the
- *       \c sci_remote_segment_t SISCI type.
- */
-typedef struct remote_segment* r_segment_t;
+#include "types.h"
 
 
 /**

@@ -6,6 +6,7 @@ extern "C" {
 
 #include <stdlib.h>
 #include <stdint.h>
+#include "types.h"
 
 #ifndef MAX_EXPORTS
 #define MAX_EXPORTS 16
@@ -13,20 +14,9 @@ extern "C" {
 
 
 /**
- * \brief Local segment descriptor handle
- *
- * Handle for the internal local segment descriptor. 
- *
- * \note This type serves as a simplified handle type for the 
- *       \c sci_local_segment_t SISCI type.
- */
-typedef struct local_segment* l_segment_t;
-
-
-/**
  * \brief Create a local segment
  *
- *  Create a local segment and initialize the local segment descriptor.
+ * Create a local segment and initialize the local segment descriptor.
  *
  * \param[out]  segment     segment descriptor handle
  * \param[in]   segmentId   unique (for this node) segment identifier

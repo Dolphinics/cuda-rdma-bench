@@ -6,6 +6,9 @@ extern "C" {
 
 #include <stdarg.h>
 
+// TODO: Rename to ReportError, ReportWarning ReportDebug etc
+// TODO: make 0 swallow everything
+// TODO: make reportFile variable, rename verbosity to LogLevel or something
 
 /* Verbosity level for reporting
  *

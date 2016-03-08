@@ -3,10 +3,11 @@
 #include <string.h>
 #include <limits.h>
 #include <sisci_api.h>
+#include <cuda.h>
+#include "types.h"
 #include "local.h"
 #include "log.h"
 #include "util.h"
-#include <cuda.h>
 
 
 // Export list entry
