@@ -4,8 +4,7 @@
 extern "C" {
 #endif
 
-#include <stdlib.h>
-#include "types.h"
+#include "simple_types.h"
 
 
 /**

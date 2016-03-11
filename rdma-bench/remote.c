@@ -3,7 +3,7 @@
 #include <string.h>
 #include <limits.h>
 #include <sisci_api.h>
-#include "types.h"
+#include "simple_types.h"
 #include "remote.h"
 #include "log.h"
 #include "util.h"

@@ -8,26 +8,71 @@ extern "C" {
 
 
 /**
- * \brief Create a DMA vector
+ * \brief Simplied DMA read
  *
- * Create a DMA vector for transferring between a local and a remote segment.
- * 
- * \param[out]  vector          DMA vector descriptor handle
- * \param[in]   localSegment    local segment descriptor handle
- * \param[in]   remoteSegment   remote segment descriptor handle
+ * Start DMA transfer from remote segment to local segment.
+ * Data is transferred asynchronously.
+ *
+ * \param[in]       localSegment    local segment descriptor handle
+ * \param[in]       localOffset     offset in the local segment
+ * \param[in]       remoteSegment   remote segment descriptor handle
+ * \param[in]       remoteOffset    offset in the remote segment
+ * \param[in]       size            total transfer size
+ * \param[in]       callback        user-defined callback (can be \c NULL)
+ * \param[in]       userData        additional user-supplied callback data (can be \c NULL)
  *
  * \returns \c 0 on success
+ *
+ * \note For most architectures, doing a DMA read is slower than write.
+ *
+ * \note A successful return value does not mean that data was successfully transferred.
+ *       Supply a callback function to check the status of the transfer.
  */
-int CreateDmaVec(dma_vec_t* vector, l_segment_t localSegment, r_segment_t remoteSegment);
+int DmaRead(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
 
 
 /**
- * \brief Remove a DMA vector
+ * \brief Simplied DMA write
+ *
+ * Start DMA transfer from local segment to remote segment. 
+ * Data is transferred asynchronously.
+ *
+ * \param[in]       localSegment    local segment descriptor handle
+ * \param[in]       localOffset     offset in the local segment
+ * \param[in]       remoteSegment   remote segment descriptor handle
+ * \param[in]       remoteOffset    offset in the remote segment
+ * \param[in]       size            total transfer size
+ * \param[in]       callback        user-defined callback (can be \c NULL)
+ * \param[in]       userData        additional user-supplied callback data (can be \c NULL)
+ *
+ * \returns \c 0 on success
+ *
+ * \note A successful return value does not mean that data was successfully transferred.
+ *       Supply a callback function to check the status of the transfer.
+ */
+int DmaWrite(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
+
+
+/**
+ * \brief Create DMA vector
+ *
+ * Create a DMA vector. A DMA vector can be used for transfers between
+ * multiple local-remote segment pairs.
+ * 
+ * \param[out]      vector          DMA vector descriptor handle
+ *
+ * \returns \c 0 on success
+ */
+int CreateDmaVec(dma_vec_t* vector);
+
+
+/**
+ * \brief Remove DMA vector
  *
  * Remove and clean up a DMA vector. This function destroys the DMA 
  * vector descriptor.
  *
- * \param[in]   vector          DMA vector descriptor handle
+ * \param[in]       vector          DMA vector descriptor handle
  *
  * \returns \c 0 on success
  */
@@ -35,82 +80,40 @@ int RemoveDmaVec(dma_vec_t vector);
 
 
 /**
- * \brief Insert a DMA vector entry
+ * \brief Append DMA vector entry
  *
- * Insert a DMA vector entry into the DMA transfer vector.
+ * Append a vector entry to the DMA vector.
  *
- * \param[in]   vector          DMA vector descriptor handle
- * \param[in]   localOff        offset in the local segment
- * \param[in]   remoteOff       offset in the remote segment
- * \param[in]   size            total transfer size
- * \param[in]   flags           additional flags for the \c dis_dma_vec_t entry
+ * \param[in]       vector          DMA vector descriptor handle
+ * \param[in]       localOffset     offset in the local segment
+ * \param[in]       remoteOffset    offset in the remote segment
+ * \param[in]       size            total transfer size
+ * \param[in]       flags           additional flags for the \c dis_dma_vec_t entry
  *
  * \returns \c 0 on success
  */
-int InsertDmaVecEntry(dma_vec_t vector, size_t localOff, size_t remoteOff, size_t size, unsigned flags);
+int AppendDmaVec(dma_vec_t vector, size_t localOffset, size_t remoteOffset, size_t size, unsigned flags);
 
 
 /**
- * \brief Transfer DMA vector synchronously
+ * \brief Transfer DMA vector 
  *
- * Transfer the DMA vector synchronously. This function blocks until the 
- * transfer is complete.
+ * Transfer a DMA vector between a local-remote segment pair using the DMA
+ * engine on the adapter where the remote segment is connected.
  *
- * \param[in]   vector          DMA vector descriptor handle
- * \param[in]   flags           additional flags for \c SCIStartDmaTransferVec
- *
- * \returns \c 0 on success
- */
-int TransferDmaVecSync(dma_vec_t vector, unsigned flags);
-
-
-/**
- * \brief Transfer DMA vector asynchronically
- *
- * Transfer the DMA vector asynchronically. This function does not block until
- * the transfer is complete and returns immediatly.
- *
- * \param[in]   vector          DMA vector descriptor handle
- * \param[in]   flags           additional flags for \c SCIStartDmaTransferVec
+ * \param[in]       vector          DMA vector descriptor handle
+ * \param[in]       localSegment    local segment descriptor handle
+ * \param[in]       remoteSegment   remote segment descriptor handle
+ * \param[in]       flags           additional flags for \c SCIStartDmaTransferVec
+ * \param[in]       callback        user-defined callback (can be \c NULL)
+ * \param[in]       userData        additional user-supplied callback data (can be \c NULL)
  *
  * \returns \c 0 on success
+ *
+ * \note A successful return value does not mean that data was successfully transferred.
+ *       Supply a callback function to check the status of the transfer.
  */
-int TransferDmaVec(dma_vec_t vector, unsigned flags);
-
-
-/**
- * \brief Simplied DMA read
- *
- * Transfer data from remote segment to local segment. This function does not
- * block until transfer is complete and returns immediatly.
- *
- * \param[in]   localSegment    local segment descriptor handle
- * \param[in]   localOff        offset in the local segment
- * \param[in]   remoteSegment   remote segment descriptor handle
- * \param[in]   remoteOff       offset in the remote segment
- * \param[in]   size            total transfer size
- *
- * \returns \c 0 on success
- */
-int DmaTransferRead(l_segment_t localSegment, size_t localOff, r_segment_t remoteSegment, size_t remoteOff, size_t size);
-
-
-/**
- * \brief Simplied DMA write
- *
- * Transfer data from local segment to local segment. This function does not
- * block until transfer is complete and returns immediatly.
- *
- * \param[in]   localSegment    local segment descriptor handle
- * \param[in]   localOff        offset in the local segment
- * \param[in]   remoteSegment   remote segment descriptor handle
- * \param[in]   remoteOff       offset in the remote segment
- * \param[in]   size            total transfer size
- *
- * \returns \c 0 on success
- */
-int DmaTransferWrite(l_segment_t localSegment, size_t localOff, r_segment_t remoteSegment, size_t remoteOff, size_t size);
-
+int TransferDmaVec(dma_vec_t vector, l_segment_t localSegment, r_segment_t remoteSegment, unsigned flags, trans_cb_t callback, void* userData);
 
 
 #ifdef __cplusplus

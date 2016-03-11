@@ -4,7 +4,7 @@
 #include <limits.h>
 #include <sisci_api.h>
 #include <cuda.h>
-#include "types.h"
+#include "simple_types.h"
 #include "local.h"
 #include "log.h"
 #include "util.h"
