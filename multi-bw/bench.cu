@@ -22,6 +22,8 @@ struct StreamData
     cudaStream_t stream;
     cudaEvent_t  started;
     cudaEvent_t  stopped;
+    double       elapsed;
+    double       bandwidth;
 };
 
 
@@ -87,34 +89,17 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
         }
     }
 
-    // Print results
+    // Synchronize events
     for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
     {
-        cudaDeviceProp prop;
-        err = cudaGetDeviceProperties(&prop, it->device);
-        if (err != cudaSuccess)
-        {
-            fprintf(stderr, "WARNING: %s\n", cudaGetErrorString(err));
-            prop.name[0] = '\0';
-        }
-
-        // make sure stream is done
         err = cudaEventSynchronize(it->stopped);
         if (err != cudaSuccess)
         {
             throw runtime_error(cudaGetErrorString(err));
         }
 
-        double usecs = usecsElapsed(*it);
-        double bandwidth = (double) it->length / usecs;
-
-        fprintf(stdout, "%4d %-25s %10s %8.0f µs %10.2f MiB/s\n",
-                it->device, 
-                prop.name, 
-                bytesToUnit(it->length).c_str(), 
-                usecs,
-                bandwidth
-               );
+        it->elapsed = usecsElapsed(*it);
+        it->bandwidth = (double) it->length / it->elapsed;
     }
 }
 
@@ -131,6 +116,8 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
         data.device = it->device;
         data.buffer = it->buffer;
         data.length = it->length;
+        data.elapsed = 0;
+        data.bandwidth = 0;
 
         err = cudaStreamCreate(&data.stream);
         if (err != cudaSuccess)
@@ -159,6 +146,11 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
     // Run measurements
     try
     {
+        fprintf(stdout, "\n====================    %-14s   (%11s)    ====================\n",
+                kind == cudaMemcpyDeviceToHost ? "DEVICE TO HOST" : "HOST TO DEVICE",
+                bytesToUnit(hostBuffer.length).c_str()
+               );
+
         measureMemcpyBandwidth(hostBuffer.buffer, streamData, kind);
     }
     catch (const runtime_error& e)
@@ -166,9 +158,28 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
         fprintf(stderr, "Unexpected error, aborting...\n");
     }
 
-    // Clean up
+    // Print results and clean up
     for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
     {
+        // get device name
+        cudaDeviceProp prop;
+        err = cudaGetDeviceProperties(&prop, it->device);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "WARNING: %s\n", cudaGetErrorString(err));
+            prop.name[0] = '\0';
+        }
+
+        // print results
+        fprintf(stdout, "%4d %-25s %10s %8.0f µs %10.2f MiB/s\n",
+                it->device, 
+                prop.name, 
+                bytesToUnit(it->length).c_str(), 
+                it->elapsed,
+                it->bandwidth
+               );
+
+        // clean up
         cudaEventDestroy(it->started);
         cudaEventDestroy(it->stopped);
         cudaStreamDestroy(it->stream);
@@ -195,6 +206,7 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
             {
                 int device = *devIt;
 
+                // synchronize device
                 err = cudaSetDevice(device);
                 if (err != cudaSuccess)
                 {
@@ -207,14 +219,11 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
                     throw runtime_error(cudaGetErrorString(err));
                 }
 
+                // create device buffer
                 deviceBuffers.push_back(DeviceBuffer(device, buffer.length));
             }
 
             // Run bandwidth test
-            fprintf(stdout, "\n====================    %-14s   (%11s)    ====================\n",
-                    kind == cudaMemcpyDeviceToHost ? "DEVICE TO HOST" : "HOST TO DEVICE",
-                    bytesToUnit(buffer.length).c_str()
-                    );
             runBandwidthTest(buffer, deviceBuffers, kind);
         }
     }
