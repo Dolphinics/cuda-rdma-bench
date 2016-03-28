@@ -88,8 +88,6 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
     }
 
     // Print results
-    size_t totalSize = 0;
-    double totalTime = 0;
     for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
     {
         cudaDeviceProp prop;
@@ -109,9 +107,6 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
 
         double usecs = usecsElapsed(*it);
         double bandwidth = (double) it->length / usecs;
-
-        totalSize += it->length;
-        totalTime += usecs;
 
         fprintf(stdout, "%4d %-25s %10s %8.0f µs %10.2f MiB/s\n",
                 it->device, 
@@ -136,7 +131,7 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
         data.device = it->device;
         data.buffer = it->buffer;
         data.length = it->length;
-        
+
         err = cudaStreamCreate(&data.stream);
         if (err != cudaSuccess)
         {
@@ -183,8 +178,7 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
 
 void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, const vector<cudaMemcpyKind>& modes)
 {
-    // TODO: Print out some info
-    // #stream: x
+    cudaError_t err;
 
     for (vector<cudaMemcpyKind>::const_iterator kindIt = modes.begin(); kindIt != modes.end(); ++kindIt)
     {
@@ -195,11 +189,25 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
             // Get host buffer
             const HostBuffer& buffer = *bufIt;
 
-            // Create device buffers
+            // Create device buffers and synchronize devices
             vector<DeviceBuffer> deviceBuffers;
             for (vector<int>::const_iterator devIt = devices.begin(); devIt != devices.end(); ++devIt)
             {
-                deviceBuffers.push_back(DeviceBuffer(*devIt, buffer.length));
+                int device = *devIt;
+
+                err = cudaSetDevice(device);
+                if (err != cudaSuccess)
+                {
+                    throw runtime_error(cudaGetErrorString(err));
+                }
+
+                err = cudaDeviceSynchronize();
+                if (err != cudaSuccess)
+                {
+                    throw runtime_error(cudaGetErrorString(err));
+                }
+
+                deviceBuffers.push_back(DeviceBuffer(device, buffer.length));
             }
 
             // Run bandwidth test

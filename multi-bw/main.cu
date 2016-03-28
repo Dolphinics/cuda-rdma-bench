@@ -28,11 +28,11 @@ static vector<cudaMemcpyKind> modes;
 
 static void showUsage(const char* fname)
 {
-    fprintf(stderr, "Usage: %s --device=<gpu>... --size=<size>...\n" 
+    fprintf(stderr, "Usage: %s --device=<gpu>... --size=<size>... [options]\n" 
             "\nDescription\n"
-            "    As the CUDA samples bandwidthTest might not be able to fully utilize a PCIe,\n"
-            "    this programs starts multiple cudaMemcpyAsync transfers in order to measure\n"
-            "    the maximum bandwidth.\n"
+            "    As the CUDA samples bandwidthTest might not be able to fully utilize the bus,\n"
+            "    this programs starts multiple cudaMemcpyAsync transfers using multiple streams\n"
+            "    in order to measure the maximum bandwidth.\n"
             "\nArguments\n"
             "  --size=<size>    transfer size in bytes\n"
             "  --device=<gpu>   specify GPU to use for transfer\n"
