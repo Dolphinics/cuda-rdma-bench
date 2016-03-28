@@ -35,7 +35,7 @@ static int shareStream = 0;
 
 static void showUsage(const char* fname)
 {
-    fprintf(stderr, "Usage: %s --device=<id>... --size=<size>... [options]\n" 
+    fprintf(stderr, "Usage: %s --device=<id>... --size=<size>... [--shared | --single] [options]\n" 
             "\nDescription\n"
             "    As the CUDA samples bandwidthTest might not be able to fully utilize the bus,\n"
             "    this programs starts multiple cudaMemcpyAsync transfers using multiple streams\n"
@@ -43,17 +43,21 @@ static void showUsage(const char* fname)
             "\nArguments\n"
             "  --size=<size>        transfer size in bytes\n"
             "  --device=<id | all>  specify CUDA device to use for transfer\n"
+            "\nStream management\n"
+            "  --shared             devices specified multiple times share the same stream\n"
+            "  --single             use a single stream for all transfers\n"
             "\nOptional arguments\n"
             "  --dtoh               specify device to host transfer (GPU to RAM)\n"
             "  --htod               specify host to device transfer (RAM to GPU)\n" 
             "  --mapped             map host memory into CUDA address space\n"
             "  --wc                 allocate write-combined host memory\n" 
-            "  --single             use a single CUDA stream for all transfers\n"
-            "  --share              devices specified multiple times share stream\n"
             "  --list               list available CUDA devices\n"
             "  --help               show this help\n"
             "\nNOTE: The arguments --size and --device can be can be specified multiple times\n"
-            "        in order to test transferring different sizes and devices.\n",
+            "        in order to test transferring different sizes and devices.\n"
+            "\nNOTE: If neither --shared nor --single is specified, then a stream is created\n"
+            "        for each time a device is specified. This will result in poor performance\n"
+            "        for transfers to a device following the first one.\n",
             fname);
 }
 
