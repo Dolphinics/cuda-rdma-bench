@@ -13,10 +13,16 @@
 using namespace std;
 
 
+// Number of available CUDA devices
 static int deviceCount = 0;
+
+// What devices to use for the bandwidth test
 static vector<int> devices;
+
+// Different host buffers to use for the bandwidth test
 static vector<HostBuffer> buffers;
 
+// Different copy modes to use for the bandwidth test
 static vector<cudaMemcpyKind> modes;
 
 
@@ -93,7 +99,7 @@ static void parseArguments(int argc, char** argv)
 
     // Parse arguments
     int opt, idx;
-    while ((opt = getopt_long(argc, argv, "-:d:s:ivlhmpc", opts, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:d:s:vlhmpwc", opts, &idx)) != -1)
     {
         switch (opt)
         {
@@ -142,6 +148,7 @@ static void parseArguments(int argc, char** argv)
                 break;
 
             case 'c': // write combined memory
+            case 'w':
                 flags |= cudaHostAllocWriteCombined;
                 break;
 
@@ -185,7 +192,7 @@ static void parseArguments(int argc, char** argv)
 
     if (flags != cudaHostAllocDefault && useSystemMemory)
     {
-        throw "System memory allocation (malloc) does not support different memory types";
+        fprintf(stderr, "NOTE: System memory allocation (malloc) does not support different memory types\n");
     }
 
     // Create host buffers
@@ -213,7 +220,7 @@ int main(int argc, char** argv)
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Unexpected error: %s\n", cudaGetErrorString(err));
-        exit('d');
+        return 'd';
     }
 
     // Parse program arguments
@@ -226,16 +233,17 @@ int main(int argc, char** argv)
         fprintf(stderr, "Unexpected error: %s\n", e.what());
         return 1;
     }
-    catch (const int e)
+    catch (const int e) // FIXME: Hack
     {
         return e;
     }
-    catch (const char* e)
+    catch (const char* e) // FIXME: Hack
     {
         fprintf(stderr, "%s\n", e);
         return 1;
     }
 
+    // Run bandwidth benchmark
     try
     {
         benchmark(buffers, devices, modes);
@@ -244,6 +252,13 @@ int main(int argc, char** argv)
     {
         fprintf(stderr, "Unexpected error: %s\n", e.what());
         return 1;
+    }
+
+    // Reset devices to supress warnings from cuda-memcheck
+    for (vector<int>::const_iterator deviceIt = devices.begin(); deviceIt != devices.end(); ++deviceIt)
+    {
+        cudaSetDevice(*deviceIt);
+        cudaDeviceReset();
     }
 
     return 0;
