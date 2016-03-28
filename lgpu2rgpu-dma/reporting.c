@@ -28,6 +28,7 @@ unsigned verbosity = 0;
 
 void log_info(const char* frmt, ...)
 {
+    /* Oh yeah, I am so freaking awesome */
     if (verbosity >= 2)
     {
         va_list args;
