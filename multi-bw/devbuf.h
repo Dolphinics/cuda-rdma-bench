@@ -13,9 +13,9 @@ class DeviceBuffer
         std::tr1::shared_ptr<DeviceBufferData> pData;
 
     public:
-        int&          device;
-        size_t&       length;
-        void*&        buffer;
+        int     device;
+        size_t  length;
+        void*   buffer;
 
         DeviceBuffer(int device, size_t length);
         DeviceBuffer(const DeviceBuffer& other);

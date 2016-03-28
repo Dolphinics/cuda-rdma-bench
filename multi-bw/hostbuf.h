@@ -12,8 +12,8 @@ class HostBuffer
         std::tr1::shared_ptr<HostBufferData> pData;
 
     public:
-        size_t& length;
-        void*&  buffer;
+        size_t length;
+        void*  buffer;
 
         HostBuffer(size_t length, unsigned int flags);
         explicit HostBuffer(size_t length);
