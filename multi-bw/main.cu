@@ -103,6 +103,7 @@ static void parseArguments(int argc, char** argv)
         { .name = "write-combined", .has_arg = 0, .flag = NULL, .val = 'c' },
         { .name = "wc", .has_arg = 0, .flag = NULL, .val = 'c' },
         { .name = "single", .has_arg = 0, .flag = &singleStream, .val = 1 },
+        { .name = "global", .has_arg = 0, .flag = &singleStream, .val = 1 },
         { .name = "shared", .has_arg = 0, .flag = &shareStream, .val = 1 },
         { .name = "list", .has_arg = 0, .flag = NULL, .val = 'l' },
         { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },

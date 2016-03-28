@@ -3,6 +3,7 @@
 #include <memory>
 #include <exception>
 #include <stdexcept>
+#include <cstdio>
 #include "stream.h"
 
 
@@ -45,12 +46,14 @@ streamPtr retrieveStream(int device, bool shareDeviceStream, bool shareSingleStr
 
         // Try to find entry in map
         streamMap::iterator lowerBound = streams.lower_bound(device);
-        if (lowerBound == streams.end() || (streams.key_comp()(device, lowerBound->first)))
+        if (lowerBound != streams.end() && !(streams.key_comp()(device, lowerBound->first)))
         {
-            streams.insert(lowerBound, streamMap::value_type(device, createStream()));
+            return lowerBound->second;
         }
 
-        return lowerBound->second;
+        streamPtr stream = createStream();
+        streams.insert(lowerBound, streamMap::value_type(device, stream));
+        return stream;
     }
 
     return createStream();
