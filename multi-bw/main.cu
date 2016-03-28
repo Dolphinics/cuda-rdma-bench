@@ -25,27 +25,35 @@ static vector<HostBuffer> buffers;
 // Different copy modes to use for the bandwidth test
 static vector<cudaMemcpyKind> modes;
 
+// Specifies that a single CUDA stream should be used
+static int singleStream = 0;
+
+// Specifies that devices that are specified multiple times should share
+// the same stream
+static int shareStream = 0;
+
 
 static void showUsage(const char* fname)
 {
-    fprintf(stderr, "Usage: %s --device=<gpu>... --size=<size>... [options]\n" 
+    fprintf(stderr, "Usage: %s --device=<id>... --size=<size>... [options]\n" 
             "\nDescription\n"
             "    As the CUDA samples bandwidthTest might not be able to fully utilize the bus,\n"
             "    this programs starts multiple cudaMemcpyAsync transfers using multiple streams\n"
             "    in order to measure the maximum bandwidth.\n"
             "\nArguments\n"
-            "  --size=<size>    transfer size in bytes\n"
-            "  --device=<gpu>   specify GPU to use for transfer\n"
+            "  --size=<size>        transfer size in bytes\n"
+            "  --device=<id | all>  specify CUDA device to use for transfer\n"
             "\nOptional arguments\n"
-            "  --dtoh           specify device to host transfer (GPU to RAM)\n"
-            "  --htod           specify host to device transfer (RAM to GPU)\n" 
-            "  --pinned         page-lock host memory and map into CUDA address space\n" 
-            "  --wc             allocate write-combined host memory\n" 
-            "  --malloc         use system memory (malloc) instead of cudaHostAlloc\n"
-            "  --verify         verify transfer by checking data\n"
-            "  --list           list available CUDA GPUs\n"
-            "  --help           show this help\n"
-            "\nNOTE: Each argument can be given multiple times to test different transfers\n",
+            "  --dtoh               specify device to host transfer (GPU to RAM)\n"
+            "  --htod               specify host to device transfer (RAM to GPU)\n" 
+            "  --mapped             map host memory into CUDA address space\n"
+            "  --wc                 allocate write-combined host memory\n" 
+            "  --single             use a single CUDA stream for all transfers\n"
+            "  --share              devices specified multiple times share stream\n"
+            "  --list               list available CUDA devices\n"
+            "  --help               show this help\n"
+            "\nNOTE: The arguments --size and --device can be can be specified multiple times\n"
+            "        in order to test transferring different sizes and devices.\n",
             fname);
 }
 
@@ -65,7 +73,10 @@ static void listDevices()
             throw runtime_error(cudaGetErrorString(err));
         }
 
-        // FIXME: Check compute compatibility
+        if (prop.computeMode == cudaComputeModeProhibited)
+        {
+            continue;
+        }
 
         fprintf(stderr, "  %2d %-25s %02x:%02x.%-3x\n",
                 i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID);
@@ -78,20 +89,21 @@ static void parseArguments(int argc, char** argv)
 {
     vector<size_t> sizes;
     unsigned int flags = cudaHostAllocDefault;
-    bool useSystemMemory = false;
 
     // Define program arguments
     option opts[] = {
         { .name = "device", .has_arg = 1, .flag = NULL, .val = 'd' },
+        { .name = "dev", .has_arg = 1, .flag = NULL, .val = 'd' },
         { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
+        { .name = "length", .has_arg = 1, .flag = NULL, .val = 's' },
+        { .name = "len", .has_arg = 1, .flag = NULL, .val = 's' },
         { .name = "dtoh", .has_arg = 0, .flag = NULL, .val = cudaMemcpyDeviceToHost },
         { .name = "htod", .has_arg = 0, .flag = NULL, .val = cudaMemcpyHostToDevice },
-        { .name = "mapped", .has_arg = 0, .flag = NULL, .val = 'p' },
-        { .name = "pinned", .has_arg = 0, .flag = NULL, .val = 'p' },
+        { .name = "mapped", .has_arg = 0, .flag = NULL, .val = 'm' },
         { .name = "write-combined", .has_arg = 0, .flag = NULL, .val = 'c' },
         { .name = "wc", .has_arg = 0, .flag = NULL, .val = 'c' },
-        { .name = "malloc", .has_arg = 0, .flag = NULL, .val = 'm' },
-        { .name = "verify", .has_arg = 0, .flag = NULL, .val = 'v' },
+        { .name = "single", .has_arg = 0, .flag = &singleStream, .val = 1 },
+        { .name = "shared", .has_arg = 0, .flag = &shareStream, .val = 1 },
         { .name = "list", .has_arg = 0, .flag = NULL, .val = 'l' },
         { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
         { .name = NULL, .has_arg = 0, .flag = NULL, .val = 0 }
@@ -99,7 +111,7 @@ static void parseArguments(int argc, char** argv)
 
     // Parse arguments
     int opt, idx;
-    while ((opt = getopt_long(argc, argv, "-:d:s:vlhmpwc", opts, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:d:s:mwcslh", opts, &idx)) != -1)
     {
         switch (opt)
         {
@@ -113,11 +125,20 @@ static void parseArguments(int argc, char** argv)
     
             case 'd': // append device to device list
                 {
+                    if (strcmp(optarg, "all") == 0)
+                    {
+                        for (int i = 0; i < deviceCount; ++i)
+                        {
+                            devices.push_back(i);
+                        }
+                        break;
+                    }
+
                     char* str = NULL;
                     int device = strtol(optarg, &str, 10);
                     if (str == NULL || *str != '\0' || device < 0 || device >= deviceCount)
                     {
-                        throw "Argument --device must be a valid GPU";
+                        throw "Argument --device must be a valid CUDA device";
                     }
                     devices.push_back(device);
                 }
@@ -136,14 +157,11 @@ static void parseArguments(int argc, char** argv)
                 break;
 
             case cudaMemcpyDeviceToHost: // device to host
-                modes.push_back(cudaMemcpyDeviceToHost);
-                break;
-
             case cudaMemcpyHostToDevice: // host to device
-                modes.push_back(cudaMemcpyHostToDevice);
+                modes.push_back((cudaMemcpyKind) opt);
                 break;
 
-            case 'p': // pinned and mapped memory
+            case 'm': // mapped memory
                 flags |= cudaHostAllocMapped;
                 break;
 
@@ -151,13 +169,6 @@ static void parseArguments(int argc, char** argv)
             case 'w':
                 flags |= cudaHostAllocWriteCombined;
                 break;
-
-            case 'm': // use malloc instead of 
-                useSystemMemory = true;
-                break;
-
-            case 'v': // verify transfer
-                throw "Verify transfer is not implemented\n";
 
             case 'l': // list devices
                 listDevices();
@@ -190,24 +201,13 @@ static void parseArguments(int argc, char** argv)
         }
     }
 
-    if (flags != cudaHostAllocDefault && useSystemMemory)
-    {
-        fprintf(stderr, "NOTE: System memory allocation (malloc) does not support different memory types\n");
-    }
+    // FIXME: Check if specified devices are allowed to use
 
     // Create host buffers
     for (vector<size_t>::const_iterator sizeIt = sizes.begin(); sizeIt != sizes.end(); ++sizeIt)
     {
         const size_t size = *sizeIt;
-
-        if (useSystemMemory)
-        {
-            buffers.push_back(HostBuffer(size));
-        }
-        else
-        {
-            buffers.push_back(HostBuffer(size, flags));
-        }
+        buffers.push_back(HostBuffer(size, flags));
     }
 }
 
@@ -246,7 +246,7 @@ int main(int argc, char** argv)
     // Run bandwidth benchmark
     try
     {
-        benchmark(buffers, devices, modes);
+        benchmark(buffers, devices, modes, shareStream, singleStream);
     }
     catch (const runtime_error& e)
     {

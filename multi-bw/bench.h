@@ -10,7 +10,9 @@
 void benchmark(
         const std::vector<HostBuffer>& hostBuffers, 
         const std::vector<int>& cudaDevices, 
-        const std::vector<cudaMemcpyKind>& transferModes
+        const std::vector<cudaMemcpyKind>& transferModes,
+        bool shareDeviceStream,
+        bool shareGlobalStream
         );
 
 #endif

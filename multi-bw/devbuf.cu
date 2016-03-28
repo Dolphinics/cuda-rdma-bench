@@ -43,24 +43,28 @@ DeviceBufferData::~DeviceBufferData()
     {
         cudaFree(buffer);
     }
+    
+    device = -1;
+    length = 0;
+    buffer = NULL;
 }
 
 
 DeviceBuffer::DeviceBuffer(int dev, size_t len)
     : pData(new DeviceBufferData(dev, len))
-    , device(pData->device)
-    , length(pData->length)
-    , buffer(pData->buffer)
 {
+    device = pData->device;
+    length = pData->length;
+    buffer = pData->buffer;
 }
 
 
 DeviceBuffer::DeviceBuffer(const DeviceBuffer& rhs)
     : pData(rhs.pData)
-    , device(pData->device)
-    , length(pData->length)
-    , buffer(pData->buffer)
 {
+    device = pData->device;
+    length = pData->length;
+    buffer = pData->buffer;
 }
 
 

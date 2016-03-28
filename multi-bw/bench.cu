@@ -1,29 +1,31 @@
 #include <cuda.h>
 #include <vector>
-#include <cstdio>
 #include <exception>
 #include <stdexcept>
 #include <string>
 #include <cstring>
+#include <cstdio>
 #include "bench.h"
 #include "devbuf.h"
 #include "hostbuf.h"
+#include "stream.h"
 
 using std::vector;
 using std::runtime_error;
 using std::string;
 
 
+
 struct StreamData
 {
-    int          device;
-    void*        buffer;
-    size_t       length;
-    cudaStream_t stream;
-    cudaEvent_t  started;
-    cudaEvent_t  stopped;
-    double       elapsed;
-    double       bandwidth;
+    int         device;
+    void*       buffer;
+    size_t      length;
+    streamPtr   stream;
+    cudaEvent_t started;
+    cudaEvent_t stopped;
+    double      elapsed;
+    double      bandwidth;
 };
 
 
@@ -70,26 +72,26 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
         const void* src = kind == cudaMemcpyDeviceToHost ? it->buffer : hostBuffer;
         void* dst = kind == cudaMemcpyDeviceToHost ? hostBuffer : it->buffer;
 
-        err = cudaEventRecord(it->started, it->stream);
+        err = cudaEventRecord(it->started, *it->stream);
         if (err != cudaSuccess)
         {
             throw runtime_error(cudaGetErrorString(err));
         }
 
-        err = cudaMemcpyAsync(dst, src, it->length, kind, it->stream);
+        err = cudaMemcpyAsync(dst, src, it->length, kind, *it->stream);
         if (err != cudaSuccess)
         {
             throw runtime_error(cudaGetErrorString(err));
         }
 
-        err = cudaEventRecord(it->stopped, it->stream);
+        err = cudaEventRecord(it->stopped, *it->stream);
         if (err != cudaSuccess)
         {
             throw runtime_error(cudaGetErrorString(err));
         }
     }
 
-    // Synchronize events
+    // Synchronize events and record results
     for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
     {
         err = cudaEventSynchronize(it->stopped);
@@ -104,7 +106,7 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
 }
 
 
-static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBuffer>& deviceBuffers, cudaMemcpyKind kind)
+static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBuffer>& deviceBuffers, cudaMemcpyKind kind, bool shareDeviceStream, bool shareGlobalStream)
 {
     cudaError_t err;
 
@@ -119,23 +121,17 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
         data.elapsed = 0;
         data.bandwidth = 0;
 
-        err = cudaStreamCreate(&data.stream);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
+        data.stream = retrieveStream(it->device, shareDeviceStream, shareGlobalStream);
 
         err = cudaEventCreate(&data.started);
         if (err != cudaSuccess)
         {
-            cudaStreamDestroy(data.stream);
             throw runtime_error(cudaGetErrorString(err));
         }
 
         err = cudaEventCreate(&data.stopped);
         if (err != cudaSuccess)
         {
-            cudaStreamDestroy(data.stream);
             cudaEventDestroy(data.started);
             throw runtime_error(cudaGetErrorString(err));
         }
@@ -182,12 +178,11 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
         // clean up
         cudaEventDestroy(it->started);
         cudaEventDestroy(it->stopped);
-        cudaStreamDestroy(it->stream);
     }
 }
 
 
-void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, const vector<cudaMemcpyKind>& modes)
+void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, const vector<cudaMemcpyKind>& modes, bool shareDeviceStream, bool shareGlobalStream)
 {
     cudaError_t err;
 
@@ -224,7 +219,7 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
             }
 
             // Run bandwidth test
-            runBandwidthTest(buffer, deviceBuffers, kind);
+            runBandwidthTest(buffer, deviceBuffers, kind, shareDeviceStream, shareGlobalStream);
         }
     }
 }

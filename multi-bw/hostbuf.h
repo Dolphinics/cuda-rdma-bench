@@ -16,7 +16,6 @@ class HostBuffer
         void*  buffer;
 
         HostBuffer(size_t length, unsigned int flags);
-        explicit HostBuffer(size_t length);
         HostBuffer(const HostBuffer& other);
         HostBuffer& operator=(const HostBuffer& other);
 };
