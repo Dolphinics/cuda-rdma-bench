@@ -3,14 +3,15 @@
 
 #include <cuda.h>
 #include <memory>
-#include <tr1/memory>
+//#include <tr1/memory>
 
 struct DeviceBufferData;
 
 class DeviceBuffer
 {
     private:
-        std::tr1::shared_ptr<DeviceBufferData> pData;
+        //std::tr1::shared_ptr<DeviceBufferData> pData;
+        std::shared_ptr<DeviceBufferData> pData;
 
     public:
         int          device;

@@ -3,9 +3,10 @@
 
 #include <cuda.h>
 #include <memory>
-#include <tr1/memory>
+//#include <tr1/memory>
 
-typedef std::tr1::shared_ptr<cudaStream_t> streamPtr;
+//typedef std::tr1::shared_ptr<cudaStream_t> streamPtr;
+typedef std::shared_ptr<cudaStream_t> streamPtr;
 
 
 streamPtr retrieveStream(int device, bool shareDeviceStream, bool shareSingleStream);

@@ -2,14 +2,15 @@
 #define __HOST_BUFFER_H__
 
 #include <memory>
-#include <tr1/memory>
+//#include <tr1/memory>
 
 struct HostBufferData;
 
 class HostBuffer
 {
     private:
-        std::tr1::shared_ptr<HostBufferData> pData;
+        //std::tr1::shared_ptr<HostBufferData> pData;
+        std::shared_ptr<HostBufferData> pData;
 
     public:
         size_t length;
