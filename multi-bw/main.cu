@@ -54,10 +54,10 @@ static void showUsage(const char* fname)
             "  --list               list available CUDA devices\n"
             "  --help               show this help\n"
             "\nNOTE: The arguments --size and --device can be can be specified multiple times\n"
-            "        in order to test transferring different sizes and devices.\n"
+            "      in order to test transferring different sizes and devices.\n"
             "\nNOTE: If neither --shared nor --single is specified, then a stream is created\n"
-            "        for each time a device is specified. This will result in poor performance\n"
-            "        for transfers to a device following the first one.\n",
+            "      for each time a device is specified. This will result in poor performance\n"
+            "      for transfers to a device following the first one.\n",
             fname);
 }
 
