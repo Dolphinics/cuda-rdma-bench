@@ -199,6 +199,8 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
             vector<DeviceBuffer> deviceBuffers;
             for (vector<int>::const_iterator devIt = devices.begin(); devIt != devices.end(); ++devIt)
             {
+                // TODO: Create StreamData here instead?
+
                 int device = *devIt;
 
                 // synchronize device
@@ -220,6 +222,8 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
 
             // Run bandwidth test
             runBandwidthTest(buffer, deviceBuffers, kind, shareDeviceStream, shareGlobalStream);
+
+            // TODO: Print results here?
         }
     }
 }

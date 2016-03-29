@@ -16,7 +16,8 @@ using namespace std;
 // Number of available CUDA devices
 static int deviceCount = 0;
 
-// What devices to use for the bandwidth test
+// Specify what devices to use for the bandwidth test
+// A device can be specified multiple times
 static vector<int> devices;
 
 // Different host buffers to use for the bandwidth test
@@ -54,10 +55,10 @@ static void showUsage(const char* fname)
             "  --list               list available CUDA devices\n"
             "  --help               show this help\n"
             "\nNOTE: The arguments --size and --device can be can be specified multiple times\n"
-            "        in order to test transferring different sizes and devices.\n"
+            "      in order to test transferring different sizes and devices.\n"
             "\nNOTE: If neither --shared nor --single is specified, then a stream is created\n"
-            "        for each time a device is specified. This will result in poor performance\n"
-            "        for transfers to a device following the first one.\n",
+            "      for each time a device is specified. This will result in poor performance\n"
+            "      for transfers following the first one for a device.\n",
             fname);
 }
 
