@@ -3,7 +3,6 @@
 #include <memory>
 #include <exception>
 #include <stdexcept>
-#include <cstdio>
 #include "stream.h"
 
 
@@ -24,7 +23,7 @@ static void deleteStream(cudaStream_t* stream)
 static streamPtr createStream()
 {
     cudaStream_t* stream = new cudaStream_t;
-    cudaError_t err = cudaStreamCreate(stream);
+    cudaError_t err = cudaStreamCreateWithFlags(stream, cudaStreamNonBlocking);
     if (err != cudaSuccess)
     {
         delete stream;

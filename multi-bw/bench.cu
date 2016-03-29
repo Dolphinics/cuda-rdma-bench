@@ -94,6 +94,9 @@ static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamD
     // Synchronize events and record results
     for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
     {
+        // FIXME: cudaStreamSynchronize? cudaStreamWaitEvent?
+        // TODO: Move this to the end, we want to run everything and then calculate stuff
+
         err = cudaEventSynchronize(it->stopped);
         if (err != cudaSuccess)
         {
@@ -182,10 +185,10 @@ static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBu
 }
 
 
+// TODO make cudaEvent_t go, and do cudaStreamWaitEvent(go);
+
 void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, const vector<cudaMemcpyKind>& modes, bool shareDeviceStream, bool shareGlobalStream)
 {
-    cudaError_t err;
-
     for (vector<cudaMemcpyKind>::const_iterator kindIt = modes.begin(); kindIt != modes.end(); ++kindIt)
     {
         cudaMemcpyKind kind = *kindIt;
@@ -203,18 +206,18 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
 
                 int device = *devIt;
 
-                // synchronize device
-                err = cudaSetDevice(device);
-                if (err != cudaSuccess)
-                {
-                    throw runtime_error(cudaGetErrorString(err));
-                }
-
-                err = cudaDeviceSynchronize();
-                if (err != cudaSuccess)
-                {
-                    throw runtime_error(cudaGetErrorString(err));
-                }
+//                // synchronize device
+//                err = cudaSetDevice(device);
+//                if (err != cudaSuccess)
+//                {
+//                    throw runtime_error(cudaGetErrorString(err));
+//                }
+//
+//                err = cudaDeviceSynchronize();
+//                if (err != cudaSuccess)
+//                {
+//                    throw runtime_error(cudaGetErrorString(err));
+//                }
 
                 // create device buffer
                 deviceBuffers.push_back(DeviceBuffer(device, buffer.length));
