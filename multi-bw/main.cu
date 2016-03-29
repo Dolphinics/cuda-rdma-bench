@@ -67,7 +67,7 @@ static void listDevices()
 {
     cudaError_t err;
 
-    fprintf(stderr, "Available devices\n");
+    fprintf(stderr, "\nAvailable devices\n");
     for (int i = 0; i < deviceCount; ++i)
     {
         cudaDeviceProp prop;

@@ -226,4 +226,5 @@ void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, co
             // TODO: Print results here?
         }
     }
+    printf("\n");
 }
