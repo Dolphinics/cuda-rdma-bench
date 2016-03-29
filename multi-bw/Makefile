@@ -1,14 +1,15 @@
 PROJECT := $(notdir $(shell pwd))
 OBJECTS	:= main.o devbuf.o hostbuf.o bench.o stream.o
 DEPS	:= devbuf.h hostbuf.h bench.h stream.h
+CFLAGS  := -Wall -Wextra -g
+NVCC    := /usr/local/cuda/bin/nvcc
 
 ifeq ($(shell uname -s),Darwin)
 CCDIR	:= /Library/Developer/CommandLineTools/usr/bin/
+CFLAGS  += -Wno-gnu-designator
 else
-CCDIR   := /usr/bin/
+CCDIR   := /usr/bin/g++
 endif
-NVCC    := /usr/local/cuda/bin/nvcc
-CFLAGS  := -Wall -Wextra -Wno-gnu-designator -g
 
 INCLUDE	:= /usr/local/cuda/include 
 
@@ -23,4 +24,4 @@ $(PROJECT): $(OBJECTS)
 	$(NVCC) -ccbin $(CCDIR) -o $@ $^ 
 
 %.o: %.cu $(DEPS)
-	$(NVCC) -x cu -ccbin $(CCDIR) -Xcompiler "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c 
+	$(NVCC) -std=c++11 -x cu -ccbin $(CCDIR) -Xcompiler "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c 
