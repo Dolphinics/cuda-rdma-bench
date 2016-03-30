@@ -103,9 +103,6 @@ static void syncStreams(const vector<TransferSpec>& transferSpecs)
 void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
 {
     cudaError_t err;
-    
-    fprintf(stdout, "Running tests... ");
-    fflush(stdout);
 
     // Create timing events on the null stream
     TimingDataPtr nullStreamTiming = createTimingData();
@@ -116,25 +113,50 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
     }
 
     // Execute transfers
-    timeTransfers(transferSpecs);
+    try
+    {
+        fprintf(stdout, "Executing transfers.....");
+        fflush(stdout);
+        timeTransfers(transferSpecs);
+        fprintf(stdout, "DONE\n");
+        fflush(stdout);
+    }
+    catch (const runtime_error& e)
+    {
+        fprintf(stdout, "FAIL\n");
+        fflush(stdout);
+        throw e;
+    }
 
     // Synchronize all streams
-    syncStreams(transferSpecs);
-
-    err = cudaEventRecord(nullStreamTiming->stopped);
-    if (err != cudaSuccess)
+    try
     {
-        throw runtime_error(cudaGetErrorString(err));
-    }
+        fprintf(stdout, "Synchronizing streams...");
+        fflush(stdout);
 
-    err = cudaEventSynchronize(nullStreamTiming->stopped);
-    if (err != cudaSuccess)
+        syncStreams(transferSpecs);
+
+        err = cudaEventRecord(nullStreamTiming->stopped);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        err = cudaEventSynchronize(nullStreamTiming->stopped);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        fprintf(stdout, "DONE\n");
+        fflush(stdout);
+    } 
+    catch (const runtime_error& e)
     {
-        throw runtime_error(cudaGetErrorString(err));
+        fprintf(stdout, "FAIL\n");
+        fflush(stdout);
+        throw e;
     }
-
-    fprintf(stdout, "DONE\n");
-    fflush(stdout);
 
 
     // Print results
