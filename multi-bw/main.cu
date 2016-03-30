@@ -66,7 +66,7 @@ static void listDevices()
         throw runtime_error(cudaGetErrorString(err));
     }
 
-    fprintf(stderr, "\n %2s   %-20s   %-9s   %-8s   %-8s   %-8s   %2s\n",
+    fprintf(stderr, "\n %2s   %-20s   %-9s   %8s   %8s   %8s   %2s\n",
             "ID", "Device name", "IO addr", "Managed", "Unified", "Mappable", "#");
     fprintf(stderr, "-----------------------------------------------------------------------------\n");
     for (int i = 0; i < deviceCount; ++i)
