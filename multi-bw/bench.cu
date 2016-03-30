@@ -180,6 +180,6 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
         fflush(stdout);
     }
     fprintf(stdout, "====================================================================================\n");
-    printf("Estimated total bandwidth : %12.f MiB/s\n", (double) totalSize / totalElapsed);
-    printf("Calculated total bandwidth: %12.f MiB/s\n", (double) totalSize / aggrElapsed);
+    printf("Aggregated total bandwidth : %12.f MiB/s\n", (double) totalSize / totalElapsed);
+    printf("Timed total bandwidth      : %12.f MiB/s\n", (double) totalSize / aggrElapsed);
 }
