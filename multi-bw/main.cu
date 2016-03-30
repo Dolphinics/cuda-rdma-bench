@@ -29,8 +29,8 @@ static void showUsage(const char* fname)
             "  --help               show this help text and quit\n"
             "\nStream modes\n"
             "  per-transfer         one stream per transfer (default)\n"
-            "  per-device           streams are specific to each device\n"
-            "  single               all transfers are on the same stream\n"
+            "  per-device           transfers to the same device share streams\n"
+            "  only-one             all transfers share the same single stream\n"
             "\nTransfer specification format\n"
             "    <device>[:<direction>][:<size>][:<memory options>...]\n"
             "\nTransfer specification arguments\n"
@@ -46,7 +46,7 @@ static void showUsage(const char* fname)
             "\nMemory options format\n"
             "   opt1,opt2,opt3,...\n"
             "\nMemory options\n"
-            "  unified              map host memory into CUDA address space\n"
+            "  mapped               map host memory into CUDA address space\n"
             "  managed              allocate managed memory on the device\n"
             "  wc                   allocate write-combined memory on the host\n"
             "\nExample runs\n"
@@ -70,9 +70,9 @@ static void listDevices()
         throw runtime_error(cudaGetErrorString(err));
     }
 
-    fprintf(stderr, "\n%3s   %-25s   %-10s   %-7s   %-7s\n",
-            "ID", "Device name", "IO addr", "Managed", "Unified");
-    fprintf(stderr, "----------------------------------------------------------------\n");
+    fprintf(stderr, "\n%3s   %-20s   %-9s   %-8s   %-8s   %-8s   %3s\n",
+            "ID", "Device name", "IO addr", "Managed", "Unified", "Mappable", "#");
+    fprintf(stderr, "-----------------------------------------------------------------------------\n");
     for (int i = 0; i < deviceCount; ++i)
     {
         cudaDeviceProp prop;
@@ -88,9 +88,12 @@ static void listDevices()
             continue;
         }
 
-        fprintf(stderr, "%3d   %-25s   %02x:%02x.%-3x   %7s   %7s\n",
+        fprintf(stderr, "%3d   %-20s   %02x:%02x.%-3x   %8s   %8s   %8s   %3d\n",
                 i, prop.name, prop.pciBusID, prop.pciDeviceID, prop.pciDomainID,
-                prop.managedMemory ? "yes" : "no", prop.unifiedAddressing ? "yes" : "no");
+                prop.managedMemory ? "yes" : "no", 
+                prop.unifiedAddressing ? "yes" : "no",
+                prop.canMapHostMemory ? "yes" : "no",
+                prop.asyncEngineCount);
     }
     fprintf(stderr, "\n");
 }
@@ -158,7 +161,7 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
             directions.push_back(cudaMemcpyDeviceToHost);
             directions.push_back(cudaMemcpyHostToDevice);
         }
-        else if (strcasecmp("unified", token) == 0 || strcasecmp("mapped", token) == 0)
+        else if (strcasecmp("mapped", token) == 0)
         {
             hostAllocFlags |= cudaHostAllocMapped;
         }
@@ -235,15 +238,15 @@ static void parseArguments(int argc, char** argv, StreamSharingMode& streamMode,
                 break;
 
             case 's': // stream sharing mode
-                if (strcmp("per-transfer", optarg) == 0)
+                if (strcasecmp("per-transfer", optarg) == 0)
                 {
                     streamMode = perTransfer;
                 }
-                else if (strcmp("per-device", optarg) == 0 || strcmp("per-gpu", optarg) == 0)
+                else if (strcasecmp("per-device", optarg) == 0 || strcasecmp("per-gpu", optarg) == 0)
                 {
                     streamMode = perDevice;
                 }
-                else if (strcmp("single", optarg) == 0)
+                else if (strcasecmp("only-one", optarg) == 0 || strcasecmp("single", optarg) == 0)
                 {
                     streamMode = singleStream;
                 }
