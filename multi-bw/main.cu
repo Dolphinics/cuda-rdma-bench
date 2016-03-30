@@ -114,22 +114,11 @@ static bool isValidDevice(int device)
 }
 
 
-static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char* specStr)
+static void parseDevice(vector<int>& devices, const char* token)
 {
-    const char* delim = ":,";
-    vector<int> devices;
-    size_t size = 0;
-    unsigned int hostAllocFlags = cudaHostAllocDefault;
-    unsigned int deviceAllocFlags = 0;
-    bool useManagedDeviceMem = false;
-    vector<cudaMemcpyKind> directions;
-
-    // First token must be device
-    char* strptr = NULL;
-    char* token = strtok(specStr, delim);
-
     if (strcasecmp("all", token) != 0)
     {
+        char* strptr = NULL;
         int device = strtol(token, &strptr, 10);
         if (strptr == NULL || *strptr != '\0' || !isValidDevice(device))
         {
@@ -155,30 +144,68 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
             }
         }
     }
+}
+
+
+static void parseDirection(vector<cudaMemcpyKind>& directions, const char* token)
+{
+    if (strcasecmp("dtoh", token) == 0)
+    {
+        directions.push_back(cudaMemcpyDeviceToHost);
+    }
+    else if (strcasecmp("htod", token) == 0)
+    {
+        directions.push_back(cudaMemcpyHostToDevice);
+    }
+    else if (strcasecmp("both", token) == 0)
+    {
+        directions.push_back(cudaMemcpyHostToDevice);
+        directions.push_back(cudaMemcpyDeviceToHost);
+    }
+    else if (strcasecmp("reverse", token) == 0)
+    {
+        directions.push_back(cudaMemcpyDeviceToHost);
+        directions.push_back(cudaMemcpyHostToDevice);
+    }
+}
+
+
+static void parseSize(size_t& size, const char* token)
+{
+    char* strptr = NULL;
+    size = strtoul(token, &strptr, 0);
+    if (strptr == NULL || *strptr != '\0')
+    {
+        size = 0;
+    }
+}
+
+
+static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char* specStr)
+{
+    vector<int> devices;
+    vector<cudaMemcpyKind> directions;
+    size_t size = 0;
+
+    unsigned int hostAllocFlags = cudaHostAllocDefault;
+    unsigned int deviceAllocFlags = 0;
+    bool useManagedDeviceMem = false;
+
+    // First token must be device
+    const char* delim = ":,";
+    char* token = strtok(specStr, delim);
+    parseDevice(devices, token);
 
     // The remaining of the transfer specification may be in arbitrary order
     // because we want to be nice
     while ((token = strtok(NULL, delim)) != NULL)
     {
-        if (strcasecmp("dtoh", token) == 0 && directions.empty())
+        if (directions.empty())
         {
-            directions.push_back(cudaMemcpyDeviceToHost);
+            parseDirection(directions, token);
         }
-        else if (strcasecmp("htod", token) == 0 && directions.empty())
-        {
-            directions.push_back(cudaMemcpyHostToDevice);
-        }
-        else if (strcasecmp("both", token) == 0 && directions.empty())
-        {
-            directions.push_back(cudaMemcpyHostToDevice);
-            directions.push_back(cudaMemcpyDeviceToHost);
-        }
-        else if (strcasecmp("reverse", token) == 0 && directions.empty())
-        {
-            directions.push_back(cudaMemcpyDeviceToHost);
-            directions.push_back(cudaMemcpyHostToDevice);
-        }
-        else if (strcasecmp("mapped", token) == 0)
+
+        if (strcasecmp("mapped", token) == 0)
         {
             hostAllocFlags |= cudaHostAllocMapped;
         }
@@ -190,14 +217,10 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
         {
             useManagedDeviceMem = true;
         }
-        else if (size == 0)
+
+        if (size == 0)
         {
-            strptr = NULL;
-            size = strtoul(token, &strptr, 0);
-            if (strptr == NULL || *strptr != '\0')
-            {
-                size = 0;
-            }
+            parseSize(size, token);
         }
     }
 
@@ -213,17 +236,32 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
     }
 
     // Try to allocate buffers and create transfer specification
-    for (cudaMemcpyKind transferMode : directions)
+    try
     {
-        for (int device : devices)
-        {
-            TransferSpec spec;
-            spec.deviceBuffer = DeviceBufferPtr(new DeviceBuffer(device, size)); // FIXME: Managed memory
-            spec.hostBuffer = HostBufferPtr(new HostBuffer(size, hostAllocFlags));
-            spec.direction = transferMode;
+        fprintf(stdout, "Allocating buffers......");
+        fflush(stdout);
 
-            transferSpecs.push_back(spec);
+        for (cudaMemcpyKind transferMode : directions)
+        {
+            for (int device : devices)
+            {
+                TransferSpec spec;
+                spec.deviceBuffer = DeviceBufferPtr(new DeviceBuffer(device, size)); // FIXME: Managed memory
+                spec.hostBuffer = HostBufferPtr(new HostBuffer(size, hostAllocFlags));
+                spec.direction = transferMode;
+
+                transferSpecs.push_back(spec);
+            }
         }
+
+        fprintf(stdout, "DONE\n");
+        fflush(stdout);
+    }
+    catch (const runtime_error& e)
+    {
+        fprintf(stdout, "FAIL\n");
+        fflush(stdout);
+        throw e;
     }
 }
 
@@ -289,13 +327,12 @@ static void parseArguments(int argc, char** argv, StreamSharingMode& streamMode,
 }
 
 
-
 int main(int argc, char** argv)
 {
-    // Parse program arguments
     StreamSharingMode streamMode = perTransfer;
     vector<TransferSpec> transferSpecs;
 
+    // Parse program arguments
     try 
     {
         parseArguments(argc, argv, streamMode, transferSpecs);
