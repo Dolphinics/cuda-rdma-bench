@@ -202,6 +202,8 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
         fflush(stdout);
     }
     fprintf(stdout, "=====================================================================================\n");
+
+    fprintf(stdout, "\n");
     fprintf(stdout, "Aggregated total time      : %12.0f µs\n", aggrElapsed);
     fprintf(stdout, "Aggregated total bandwidth : %12.2f MiB/s\n", (double) totalSize / aggrElapsed);
     fprintf(stdout, "Estimated elapsed time     : %12.0f µs\n", timedElapsed);

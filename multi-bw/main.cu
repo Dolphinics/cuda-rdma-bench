@@ -227,8 +227,8 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
     // Insert default values if necessary
     if (directions.empty())
     {
-        directions.push_back(cudaMemcpyDeviceToHost);
         directions.push_back(cudaMemcpyHostToDevice);
+        directions.push_back(cudaMemcpyDeviceToHost);
     }
     if (size == 0)
     {
