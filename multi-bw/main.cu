@@ -42,6 +42,7 @@ static void showUsage(const char* fname)
             "  HtoD                 host to device transfer (RAM to GPU)\n"
             "  DtoH                 device to host transfer (GPU to RAM)\n"
             "  both                 both HtoD and DtoH (default)\n"
+            "  reverse              like both, but in reverse order (DtoH then HtoD)\n"
             "\nMemory options format\n"
             "   opt1,opt2,opt3,...\n"
             "\nMemory options\n"
@@ -148,6 +149,11 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
             directions.push_back(cudaMemcpyHostToDevice);
         }
         else if (strcasecmp("both", token) == 0 && directions.empty())
+        {
+            directions.push_back(cudaMemcpyHostToDevice);
+            directions.push_back(cudaMemcpyDeviceToHost);
+        }
+        else if (strcasecmp("reverse", token) == 0 && directions.empty())
         {
             directions.push_back(cudaMemcpyDeviceToHost);
             directions.push_back(cudaMemcpyHostToDevice);

@@ -22,7 +22,7 @@ static void deleteStream(cudaStream_t* stream)
 static StreamPtr createStream()
 {
     cudaStream_t* stream = new cudaStream_t;
-    cudaError_t err = cudaStreamCreate(stream);
+    cudaError_t err = cudaStreamCreateWithFlags(stream, cudaStreamNonBlocking);
     if (err != cudaSuccess)
     {
         delete stream;
