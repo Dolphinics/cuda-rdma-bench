@@ -13,8 +13,8 @@ static StreamMap streams;
 
 static void deleteStream(cudaStream_t* stream)
 {
-    //cudaStreamSynchronize(*stream);
-    //cudaStreamDestroy(*stream);
+    cudaStreamSynchronize(*stream);
+    cudaStreamDestroy(*stream);
     delete stream;
 }
 
