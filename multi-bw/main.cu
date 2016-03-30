@@ -41,8 +41,8 @@ static void showUsage(const char* fname)
             "\nTransfer directions\n"
             "  HtoD                 host to device transfer (RAM to GPU)\n"
             "  DtoH                 device to host transfer (GPU to RAM)\n"
-            "  both                 both HtoD and DtoH (default)\n"
-            "  reverse              like both, but in reverse order (DtoH then HtoD)\n"
+            "  both                 first HtoD then DtoH (default)\n"
+            "  reverse              first DtoH then HtoD\n"
             "\nMemory options format\n"
             "   opt1,opt2,opt3,...\n"
             "\nMemory options\n"
@@ -89,7 +89,7 @@ static void listDevices()
         }
 
         fprintf(stderr, "%3d   %-25s   %02x:%02x.%-3x   %7s   %7s\n",
-                i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID,
+                i, prop.name, prop.pciBusID, prop.pciDeviceID, prop.pciDomainID,
                 prop.managedMemory ? "yes" : "no", prop.unifiedAddressing ? "yes" : "no");
     }
     fprintf(stderr, "\n");
@@ -239,7 +239,7 @@ static void parseArguments(int argc, char** argv, StreamSharingMode& streamMode,
                 {
                     streamMode = perTransfer;
                 }
-                else if (strcmp("per-device", optarg) == 0)
+                else if (strcmp("per-device", optarg) == 0 || strcmp("per-gpu", optarg) == 0)
                 {
                     streamMode = perDevice;
                 }
@@ -269,19 +269,6 @@ static void parseArguments(int argc, char** argv, StreamSharingMode& streamMode,
 
 int main(int argc, char** argv)
 {
-    int deviceCount = 0;
-    cudaError_t err = cudaGetDeviceCount(&deviceCount);
-    if (err != cudaSuccess)
-    {
-        throw runtime_error(cudaGetErrorString(err));
-    }
-
-    if (deviceCount == 0)
-    {
-        fprintf(stderr, "No CUDA capable devices found!\n");
-        return 1;
-    }
-
     // Parse program arguments
     StreamSharingMode streamMode = perTransfer;
     vector<TransferSpec> transferSpecs;
@@ -302,6 +289,20 @@ int main(int argc, char** argv)
 
     try
     {
+        // Check number of available GPUs
+        int deviceCount = 0;
+        cudaError_t err = cudaGetDeviceCount(&deviceCount);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        if (deviceCount == 0)
+        {
+            fprintf(stderr, "No CUDA capable devices found!\n");
+            return 1;
+        }
+
         // No transfer specifications?
         if (transferSpecs.empty())
         {

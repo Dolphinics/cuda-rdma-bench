@@ -146,8 +146,8 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
     fflush(stdout);
 
     size_t totalSize = 0;
-    double totalElapsed = .0;
-    double aggrElapsed = nullStreamTiming->usecs();
+    double aggrElapsed = .0;
+    double timedElapsed = nullStreamTiming->usecs();
 
     for (const TransferSpec& res : transferSpecs)
     {
@@ -156,7 +156,7 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
         double bandwidth = (double) size / elapsed;
 
         totalSize += size;
-        totalElapsed += elapsed;
+        aggrElapsed += elapsed;
 
         cudaDeviceProp prop;
         err = cudaGetDeviceProperties(&prop, res.deviceBuffer->device);
@@ -180,6 +180,10 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
         fflush(stdout);
     }
     fprintf(stdout, "====================================================================================\n");
-    printf("Aggregated total bandwidth : %12.f MiB/s\n", (double) totalSize / totalElapsed);
-    printf("Timed total bandwidth      : %12.f MiB/s\n", (double) totalSize / aggrElapsed);
+    fprintf(stdout, "Aggregated total time      : %12.0f µs\n", aggrElapsed);
+    fprintf(stdout, "Estimated elapsed time     : %12.0f µs\n", timedElapsed);
+    fprintf(stdout, "Aggregated total bandwidth : %12.2f MiB/s\n", (double) totalSize / aggrElapsed);
+    fprintf(stdout, "Timed total bandwidth      : %12.2f MiB/s\n", (double) totalSize / timedElapsed);
+    fprintf(stdout, "\n");
+    fflush(stdout);
 }
