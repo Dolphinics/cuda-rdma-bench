@@ -139,10 +139,10 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
 
     // Print results
     fprintf(stdout, "\n");
-    fprintf(stdout, "====================================================================================\n");
-    fprintf(stdout, "%3s   %-15s   %13s   %-8s   %-12s   %-10s\n",
+    fprintf(stdout, "=====================================================================================\n");
+    fprintf(stdout, " %2s   %-15s   %13s   %-8s   %-12s   %-10s\n",
             "ID", "Device name", "Transfer size", "Direction", "Time elapsed", "Bandwidth");
-    fprintf(stdout, "------------------------------------------------------------------------------------\n");
+    fprintf(stdout, "-------------------------------------------------------------------------------------\n");
     fflush(stdout);
 
     size_t totalSize = 0;
@@ -169,7 +169,7 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
             prop.name[4] = '\0';
         }
 
-        fprintf(stdout, "%3d   %-15s   %13s    %8s   %9.0f µs    %10.2f MiB/s\n",
+        fprintf(stdout, " %2d   %-15s   %13s    %8s   %9.0f µs    %10.2f MiB/s \n",
                 res.deviceBuffer->device, 
                 prop.name, 
                 bytesToUnit(size).c_str(), 
@@ -179,7 +179,7 @@ void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
                );
         fflush(stdout);
     }
-    fprintf(stdout, "====================================================================================\n");
+    fprintf(stdout, "=====================================================================================\n");
     fprintf(stdout, "Aggregated total time      : %12.0f µs\n", aggrElapsed);
     fprintf(stdout, "Estimated elapsed time     : %12.0f µs\n", timedElapsed);
     fprintf(stdout, "Aggregated total bandwidth : %12.2f MiB/s\n", (double) totalSize / aggrElapsed);

@@ -70,7 +70,7 @@ static void listDevices()
         throw runtime_error(cudaGetErrorString(err));
     }
 
-    fprintf(stderr, "\n%3s   %-20s   %-9s   %-8s   %-8s   %-8s   %3s\n",
+    fprintf(stderr, "\n %2s   %-20s   %-9s   %-8s   %-8s   %-8s   %2s\n",
             "ID", "Device name", "IO addr", "Managed", "Unified", "Mappable", "#");
     fprintf(stderr, "-----------------------------------------------------------------------------\n");
     for (int i = 0; i < deviceCount; ++i)
@@ -88,7 +88,7 @@ static void listDevices()
             continue;
         }
 
-        fprintf(stderr, "%3d   %-20s   %02x:%02x.%-3x   %8s   %8s   %8s   %3d\n",
+        fprintf(stderr, " %2d   %-20s   %02x:%02x.%-3x   %8s   %8s   %8s   %2d\n",
                 i, prop.name, prop.pciBusID, prop.pciDeviceID, prop.pciDomainID,
                 prop.managedMemory ? "yes" : "no", 
                 prop.unifiedAddressing ? "yes" : "no",
@@ -121,7 +121,7 @@ static bool isValidDevice(int device)
 static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char* specStr)
 {
     const char* delim = ":,";
-    int device = -1;
+    vector<int> devices;
     size_t size = 0;
     unsigned int hostAllocFlags = cudaHostAllocDefault;
     unsigned int deviceAllocFlags = 0;
@@ -132,11 +132,32 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
     char* strptr = NULL;
     char* token = strtok(specStr, delim);
 
-    device = strtol(token, &strptr, 10);
-    if (strptr == NULL || *strptr != '\0' || !isValidDevice(device))
+    if (strcasecmp("all", token) != 0)
     {
-        fprintf(stderr, "Invalid transfer specification: '%s' is not a valid device\n", token);
-        throw 3;
+        int device = strtol(token, &strptr, 10);
+        if (strptr == NULL || *strptr != '\0' || !isValidDevice(device))
+        {
+            fprintf(stderr, "Invalid transfer specification: '%s' is not a valid device\n", token);
+            throw 3;
+        }
+        devices.push_back(device);
+    }
+    else
+    {
+        int deviceCount = 0;
+        cudaError_t err = cudaGetDeviceCount(&deviceCount);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        for (int device = 0; device < deviceCount; ++device)
+        {
+            if (isValidDevice(device))
+            {
+                devices.push_back(device);
+            }
+        }
     }
 
     // The remaining of the transfer specification may be in arbitrary order
@@ -198,12 +219,15 @@ static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char
     // Try to allocate buffers and create transfer specification
     for (cudaMemcpyKind transferMode : directions)
     {
-        TransferSpec spec;
-        spec.deviceBuffer = DeviceBufferPtr(new DeviceBuffer(device, size)); // FIXME: Managed memory
-        spec.hostBuffer = HostBufferPtr(new HostBuffer(size, hostAllocFlags));
-        spec.direction = transferMode;
+        for (int device : devices)
+        {
+            TransferSpec spec;
+            spec.deviceBuffer = DeviceBufferPtr(new DeviceBuffer(device, size)); // FIXME: Managed memory
+            spec.hostBuffer = HostBufferPtr(new HostBuffer(size, hostAllocFlags));
+            spec.direction = transferMode;
 
-        transferSpecs.push_back(spec);
+            transferSpecs.push_back(spec);
+        }
     }
 }
 
@@ -292,33 +316,12 @@ int main(int argc, char** argv)
 
     try
     {
-        // Check number of available GPUs
-        int deviceCount = 0;
-        cudaError_t err = cudaGetDeviceCount(&deviceCount);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        if (deviceCount == 0)
-        {
-            fprintf(stderr, "No CUDA capable devices found!\n");
-            return 1;
-        }
-
         // No transfer specifications?
         if (transferSpecs.empty())
         {
-            for (int device = 0; device < deviceCount; ++device)
-            {
-                if (isValidDevice(device))
-                {
-                    char buffer[64];
-                    snprintf(buffer, sizeof(buffer), "%d", device);
-
-                    parseTransferSpecification(transferSpecs, buffer);
-                }
-            }
+            char buffer[64];
+            snprintf(buffer, sizeof(buffer), "all");
+            parseTransferSpecification(transferSpecs, buffer);
         }
 
         // Create streams and timing events
