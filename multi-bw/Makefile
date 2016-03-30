@@ -1,6 +1,6 @@
 PROJECT := $(notdir $(shell pwd))
-OBJECTS	:= main.o devbuf.o hostbuf.o bench.o stream.o
-DEPS	:= devbuf.h hostbuf.h bench.h stream.h
+OBJECTS	:= main.o devbuf.o hostbuf.o bench.o stream.o event.o
+DEPS	:= devbuf.h hostbuf.h bench.h stream.h event.h
 CFLAGS  := -Wall -Wextra -g
 NVCC    := /usr/local/cuda/bin/nvcc
 

@@ -1,7 +1,9 @@
 #include <cuda.h>
 #include <getopt.h>
+#include <string>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 #include <cstdio>
 #include <vector>
 #include <exception>
@@ -9,57 +11,50 @@
 #include "devbuf.h"
 #include "hostbuf.h"
 #include "bench.h"
+#include "event.h"
 
 using namespace std;
 
 
-// Number of available CUDA devices
-static int deviceCount = 0;
-
-// Specify what devices to use for the bandwidth test
-// A device can be specified multiple times
-static vector<int> devices;
-
-// Different host buffers to use for the bandwidth test
-static vector<HostBuffer> buffers;
-
-// Different copy modes to use for the bandwidth test
-static vector<cudaMemcpyKind> modes;
-
-// Specifies that a single CUDA stream should be used
-static int singleStream = 0;
-
-// Specifies that devices that are specified multiple times should share
-// the same stream
-static int shareStream = 0;
-
-
 static void showUsage(const char* fname)
 {
-    fprintf(stderr, "Usage: %s --device=<id>... --size=<size>... [--shared | --single] [options]\n" 
+    fprintf(stderr, "Usage: %s --transfer=<transfer specs>... [--streams=<mode>] [--list] [--help]\n" 
             "\nDescription\n"
             "    As the CUDA samples bandwidthTest might not be able to fully utilize the bus,\n"
             "    this programs starts multiple cudaMemcpyAsync transfers using multiple streams\n"
             "    in order to measure the maximum bandwidth.\n"
-            "\nArguments\n"
-            "  --size=<size>        transfer size in bytes\n"
-            "  --device=<id | all>  specify CUDA device to use for transfer\n"
-            "\nStream management\n"
-            "  --shared             devices specified multiple times share the same stream\n"
-            "  --single             use a single stream for all transfers\n"
-            "\nOptional arguments\n"
-            "  --dtoh               specify device to host transfer (GPU to RAM)\n"
-            "  --htod               specify host to device transfer (RAM to GPU)\n" 
-            "  --mapped             map host memory into CUDA address space\n"
-            "  --wc                 allocate write-combined host memory\n" 
-            "  --list               list available CUDA devices\n"
-            "  --help               show this help\n"
-            "\nNOTE: The arguments --size and --device can be can be specified multiple times\n"
-            "      in order to test transferring different sizes and devices.\n"
-            "\nNOTE: If neither --shared nor --single is specified, then a stream is created\n"
-            "      for each time a device is specified. This will result in poor performance\n"
-            "      for transfers following the first one for a device.\n",
-            fname);
+            "\nProgram options\n"
+            "  --streams=<mode>      stream modes for transfers\n"
+            "  --list               list available CUDA devices and quit\n"
+            "  --help               show this help text and quit\n"
+            "\nStream modes\n"
+            "  per-transfer         one stream per transfer (default)\n"
+            "  per-device           streams are specific to each device\n"
+            "  single               all transfers are on the same stream\n"
+            "\nTransfer specification format\n"
+            "    <device>[:<direction>][:<size>][:<memory options>...]\n"
+            "\nTransfer specification arguments\n"
+            "  <device>             CUDA device to use for transfer\n"
+            "  <direction>          transfer directions\n"
+            "  <size>               transfer size in bytes (default is 32 MiB)\n"
+            "  <memory options>     memory allocation options\n"
+            "\nTransfer directions\n"
+            "  HtoD                 host to device transfer (RAM to GPU)\n"
+            "  DtoH                 device to host transfer (GPU to RAM)\n"
+            "  both                 both HtoD and DtoH (default)\n"
+            "\nMemory options format\n"
+            "   opt1,opt2,opt3,...\n"
+            "\nMemory options\n"
+            "  unified              map host memory into CUDA address space\n"
+            "  managed              allocate managed memory on the device\n"
+            "  wc                   allocate write-combined memory on the host\n"
+            "\nExample runs\n"
+            "  %s --run=all\n"
+            "  %s --run=0:both:1048576\n"
+            "  %s --run=0:DtoH:1024:wc,mapped --run=1:HtoD:4096 --run=0:DtoH:128:wc --streams=per-device\n"
+            ,
+            fname, fname, fname, fname
+           );
 }
 
 
@@ -67,7 +62,16 @@ static void listDevices()
 {
     cudaError_t err;
 
-    fprintf(stderr, "\nAvailable devices\n");
+    int deviceCount = 0;
+    err = cudaGetDeviceCount(&deviceCount);
+    if (err != cudaSuccess)
+    {
+        throw runtime_error(cudaGetErrorString(err));
+    }
+
+    fprintf(stderr, "\n%3s   %-25s   %-10s   %-7s   %-7s\n",
+            "ID", "Device name", "IO addr", "Managed", "Unified");
+    fprintf(stderr, "----------------------------------------------------------------\n");
     for (int i = 0; i < deviceCount; ++i)
     {
         cudaDeviceProp prop;
@@ -83,33 +87,124 @@ static void listDevices()
             continue;
         }
 
-        fprintf(stderr, "  %2d %-25s %02x:%02x.%-3x\n",
-                i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID);
+        fprintf(stderr, "%3d   %-25s   %02x:%02x.%-3x   %7s   %7s\n",
+                i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID,
+                prop.managedMemory ? "yes" : "no", prop.unifiedAddressing ? "yes" : "no");
     }
     fprintf(stderr, "\n");
 }
 
 
-static void parseArguments(int argc, char** argv)
+static bool isValidDevice(int device)
 {
-    vector<size_t> sizes;
-    unsigned int flags = cudaHostAllocDefault;
+    cudaDeviceProp prop;
 
+    cudaError_t err = cudaGetDeviceProperties(&prop, device);
+    if (err != cudaSuccess)
+    {
+        return false;
+    }
+
+    if (prop.computeMode == cudaComputeModeProhibited)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+
+static void parseTransferSpecification(vector<TransferSpec>& transferSpecs, char* specStr)
+{
+    const char* delim = ":,";
+    int device = -1;
+    size_t size = 0;
+    unsigned int hostAllocFlags = cudaHostAllocDefault;
+    unsigned int deviceAllocFlags = 0;
+    bool useManagedDeviceMem = false;
+    vector<cudaMemcpyKind> directions;
+
+    // First token must be device
+    char* strptr = NULL;
+    char* token = strtok(specStr, delim);
+
+    device = strtol(token, &strptr, 10);
+    if (strptr == NULL || *strptr != '\0' || !isValidDevice(device))
+    {
+        fprintf(stderr, "Invalid transfer specification: '%s' is not a valid device\n", token);
+        throw 3;
+    }
+
+    // The remaining of the transfer specification may be in arbitrary order
+    // because we want to be nice
+    while ((token = strtok(NULL, delim)) != NULL)
+    {
+        if (strcasecmp("dtoh", token) == 0 && directions.empty())
+        {
+            directions.push_back(cudaMemcpyDeviceToHost);
+        }
+        else if (strcasecmp("htod", token) == 0 && directions.empty())
+        {
+            directions.push_back(cudaMemcpyHostToDevice);
+        }
+        else if (strcasecmp("both", token) == 0 && directions.empty())
+        {
+            directions.push_back(cudaMemcpyDeviceToHost);
+            directions.push_back(cudaMemcpyHostToDevice);
+        }
+        else if (strcasecmp("unified", token) == 0 || strcasecmp("mapped", token) == 0)
+        {
+            hostAllocFlags |= cudaHostAllocMapped;
+        }
+        else if (strcasecmp("write-combined", token) == 0 || strcasecmp("wc", token) == 0)
+        {
+            hostAllocFlags |= cudaHostAllocWriteCombined;
+        }
+        else if (strcasecmp("managed", token) == 0)
+        {
+            useManagedDeviceMem = true;
+        }
+        else if (size == 0)
+        {
+            strptr = NULL;
+            size = strtoul(token, &strptr, 0);
+            if (strptr == NULL || *strptr != '\0')
+            {
+                size = 0;
+            }
+        }
+    }
+
+    // Insert default values if necessary
+    if (directions.empty())
+    {
+        directions.push_back(cudaMemcpyDeviceToHost);
+        directions.push_back(cudaMemcpyHostToDevice);
+    }
+    if (size == 0)
+    {
+        size = 32 << 20;
+    }
+
+    // Try to allocate buffers and create transfer specification
+    for (cudaMemcpyKind transferMode : directions)
+    {
+        TransferSpec spec;
+        spec.deviceBuffer = DeviceBufferPtr(new DeviceBuffer(device, size)); // FIXME: Managed memory
+        spec.hostBuffer = HostBufferPtr(new HostBuffer(size, hostAllocFlags));
+        spec.direction = transferMode;
+
+        transferSpecs.push_back(spec);
+    }
+}
+
+
+static void parseArguments(int argc, char** argv, StreamSharingMode& streamMode, vector<TransferSpec>& transferSpecs)
+{
     // Define program arguments
-    option opts[] = {
-        { .name = "device", .has_arg = 1, .flag = NULL, .val = 'd' },
-        { .name = "dev", .has_arg = 1, .flag = NULL, .val = 'd' },
-        { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
-        { .name = "length", .has_arg = 1, .flag = NULL, .val = 's' },
-        { .name = "len", .has_arg = 1, .flag = NULL, .val = 's' },
-        { .name = "dtoh", .has_arg = 0, .flag = NULL, .val = cudaMemcpyDeviceToHost },
-        { .name = "htod", .has_arg = 0, .flag = NULL, .val = cudaMemcpyHostToDevice },
-        { .name = "mapped", .has_arg = 0, .flag = NULL, .val = 'm' },
-        { .name = "write-combined", .has_arg = 0, .flag = NULL, .val = 'c' },
-        { .name = "wc", .has_arg = 0, .flag = NULL, .val = 'c' },
-        { .name = "single", .has_arg = 0, .flag = &singleStream, .val = 1 },
-        { .name = "global", .has_arg = 0, .flag = &singleStream, .val = 1 },
-        { .name = "shared", .has_arg = 0, .flag = &shareStream, .val = 1 },
+    const option opts[] = {
+        { .name = "transfer", .has_arg = 1, .flag = NULL, .val = 't' },
+        { .name = "streams", .has_arg = 1, .flag = NULL, .val = 's' },
         { .name = "list", .has_arg = 0, .flag = NULL, .val = 'l' },
         { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
         { .name = NULL, .has_arg = 0, .flag = NULL, .val = 0 }
@@ -117,7 +212,7 @@ static void parseArguments(int argc, char** argv)
 
     // Parse arguments
     int opt, idx;
-    while ((opt = getopt_long(argc, argv, "-:d:s:mwcslh", opts, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:t:s:lh", opts, &idx)) != -1)
     {
         switch (opt)
         {
@@ -128,52 +223,29 @@ static void parseArguments(int argc, char** argv)
             case '?': // unknown option
                 fprintf(stderr, "Unknown option: %s\n", argv[optind-1]);
                 throw 1;
-    
-            case 'd': // append device to device list
+
+            case 't': // transfer specification
+                parseTransferSpecification(transferSpecs, optarg);
+                break;
+
+            case 's': // stream sharing mode
+                if (strcmp("per-transfer", optarg) == 0)
                 {
-                    if (strcmp(optarg, "all") == 0)
-                    {
-                        for (int i = 0; i < deviceCount; ++i)
-                        {
-                            devices.push_back(i);
-                        }
-                        break;
-                    }
-
-                    char* str = NULL;
-                    int device = strtol(optarg, &str, 10);
-                    if (str == NULL || *str != '\0' || device < 0 || device >= deviceCount)
-                    {
-                        throw "Argument --device must be a valid CUDA device";
-                    }
-                    devices.push_back(device);
+                    streamMode = perTransfer;
                 }
-                break;
-
-            case 's': // append transfer size to size list
+                else if (strcmp("per-device", optarg) == 0)
                 {
-                    char* str = NULL;
-                    size_t size = strtoull(optarg, &str, 0);
-                    if (str == NULL || *str != '\0' || size == 0)
-                    {
-                        throw "Argument --size must be a valid byte count";
-                    }
-                    sizes.push_back(size);
+                    streamMode = perDevice;
                 }
-                break;
-
-            case cudaMemcpyDeviceToHost: // device to host
-            case cudaMemcpyHostToDevice: // host to device
-                modes.push_back((cudaMemcpyKind) opt);
-                break;
-
-            case 'm': // mapped memory
-                flags |= cudaHostAllocMapped;
-                break;
-
-            case 'c': // write combined memory
-            case 'w':
-                flags |= cudaHostAllocWriteCombined;
+                else if (strcmp("single", optarg) == 0)
+                {
+                    streamMode = singleStream;
+                }
+                else
+                {
+                    fprintf(stderr, "Unknown stream mode: %s\n", optarg);
+                    throw 2;
+                }
                 break;
 
             case 'l': // list devices
@@ -185,86 +257,74 @@ static void parseArguments(int argc, char** argv)
                 throw 0;
         }
     }
-
-    if (modes.empty())
-    {
-        modes.push_back(cudaMemcpyHostToDevice);
-        modes.push_back(cudaMemcpyDeviceToHost);
-    }
-
-    if (sizes.empty())
-    {
-        fprintf(stderr, "NOTE: No size argument given, using default size 32 MiB\n");
-        sizes.push_back(32 << 20);
-    }
-
-    if (devices.empty())
-    {
-        fprintf(stderr, "NOTE: No devices specified, using all devices\n");
-        for (int i = 0; i < deviceCount; ++i)
-        {
-            devices.push_back(i);
-        }
-    }
-
-    // FIXME: Check if specified devices are allowed to use
-
-    // Create host buffers
-    for (vector<size_t>::const_iterator sizeIt = sizes.begin(); sizeIt != sizes.end(); ++sizeIt)
-    {
-        const size_t size = *sizeIt;
-        buffers.push_back(HostBuffer(size, flags));
-    }
 }
 
 
 
 int main(int argc, char** argv)
 {
-    // Find maximum GPU count
+    int deviceCount = 0;
     cudaError_t err = cudaGetDeviceCount(&deviceCount);
     if (err != cudaSuccess)
     {
-        fprintf(stderr, "Unexpected error: %s\n", cudaGetErrorString(err));
-        return 'd';
+        throw runtime_error(cudaGetErrorString(err));
+    }
+
+    if (deviceCount == 0)
+    {
+        fprintf(stderr, "No CUDA capable devices found!\n");
+        return 1;
     }
 
     // Parse program arguments
+    StreamSharingMode streamMode = perTransfer;
+    vector<TransferSpec> transferSpecs;
+
     try 
     {
-        parseArguments(argc, argv);
+        parseArguments(argc, argv, streamMode, transferSpecs);
     }
     catch (const runtime_error& e)
     {
         fprintf(stderr, "Unexpected error: %s\n", e.what());
         return 1;
     }
-    catch (const int e) // FIXME: Hack
+    catch (const int e) 
     {
         return e;
     }
-    catch (const char* e) // FIXME: Hack
-    {
-        fprintf(stderr, "%s\n", e);
-        return 1;
-    }
 
-    // Run bandwidth benchmark
     try
     {
-        benchmark(buffers, devices, modes, shareStream, singleStream);
+        // No transfer specifications?
+        if (transferSpecs.empty())
+        {
+            for (int device = 0; device < deviceCount; ++device)
+            {
+                if (isValidDevice(device))
+                {
+                    char buffer[64];
+                    snprintf(buffer, sizeof(buffer), "%d", device);
+
+                    parseTransferSpecification(transferSpecs, buffer);
+                }
+            }
+        }
+
+        // Create streams and timing events
+        for (TransferSpec& spec : transferSpecs)
+        {
+            spec.cudaStream = retrieveStream(spec.deviceBuffer->device, streamMode);
+            spec.cudaEvents = createTimingData();
+        }
+
+        // Run bandwidth test
+        runBandwidthTest(transferSpecs);
     }
     catch (const runtime_error& e)
     {
         fprintf(stderr, "Unexpected error: %s\n", e.what());
         return 1;
-    }
-
-    // Reset devices to supress warnings from cuda-memcheck
-    for (vector<int>::const_iterator deviceIt = devices.begin(); deviceIt != devices.end(); ++deviceIt)
-    {
-        cudaSetDevice(*deviceIt);
-        cudaDeviceReset();
     }
 
     return 0;

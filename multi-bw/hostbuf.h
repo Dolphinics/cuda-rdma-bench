@@ -2,23 +2,21 @@
 #define __HOST_BUFFER_H__
 
 #include <memory>
-//#include <tr1/memory>
 
-struct HostBufferData;
 
-class HostBuffer
+struct HostBuffer
 {
-    private:
-        //std::tr1::shared_ptr<HostBufferData> pData;
-        std::shared_ptr<HostBufferData> pData;
+    const size_t length;
+    void* const  buffer;
 
-    public:
-        size_t length;
-        void*  buffer;
+    HostBuffer(size_t length, unsigned int flags);
+    ~HostBuffer();
 
-        HostBuffer(size_t length, unsigned int flags);
-        HostBuffer(const HostBuffer& other);
-        HostBuffer& operator=(const HostBuffer& other);
+    HostBuffer(const HostBuffer& other) = delete;
+    HostBuffer& operator=(const HostBuffer& other) = delete;
 };
+
+
+typedef std::shared_ptr<HostBuffer> HostBufferPtr;
 
 #endif
