@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <sisci_api.h>
 #include <signal.h>
+#include <unistd.h>
 #include "local.h"
 #include "remote.h"
 #include "util.h"
 #include "log.h"
+#include "dma.h"
 
 static int keep_running = 1;
 
@@ -14,24 +16,41 @@ static void stop_server()
 }
 
 
+
 int client(unsigned node)
 {
-    r_segment_t segment;
+    r_segment_t rsegment;
 
-    if (ConnectRemoteSegment(&segment, 0, node, 10) != 0)
+    if (ConnectRemoteSegment(&rsegment, 0, node, 10) != 0)
     {
         return 1;
     }
 
-    int* ptr = (int*) GetRemoteSegmentPtr(segment);
+    l_segment_t lsegment;
+    if (CreateLocalSegment(&lsegment, 10, 0) != 0)
+    {
+        return 1;
+    }
 
-    printf("%x\n", *ptr);
+    if (AllocSegmentMem(lsegment, 4) != 0)
+    {
+        RemoveLocalSegment(lsegment);
+        return 1;
+    }
+
+    int* ptr = (int*) GetLocalSegmentPtr(lsegment);
+    if (ptr == NULL)
+    {
+        RemoveLocalSegment(lsegment);
+        return 1;
+    }
 
     *ptr = 0xb00bbabe;
 
-    printf("%x\n", *ptr);
+    DmaWrite(0, lsegment, 0, rsegment, 0, 4, NULL, NULL);
 
-    DisconnectRemoteSegment(segment);
+    DisconnectRemoteSegment(rsegment);
+    RemoveLocalSegment(lsegment);
     return 0;
 }
 
@@ -65,6 +84,7 @@ int server()
     while (keep_running)
     {
         printf("%x\n", *ptr);
+        sleep(1);
     }
     
     RemoveLocalSegment(segment);
