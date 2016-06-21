@@ -6,10 +6,6 @@ extern "C" {
 
 #include "simple_types.h"
 
-#ifndef MAX_EXPORTS
-#define MAX_EXPORTS 16
-#endif
-
 
 /**
  * \brief Create a local segment

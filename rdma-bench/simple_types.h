@@ -57,7 +57,7 @@ struct trans_info {
     r_segment_t     remoteSegment;
     l_segment_t     localSegment;
     size_t          bytesTransferred;
-    uint64_t        completionTime;
+    uint64_t        transferTime;
 };
 
 

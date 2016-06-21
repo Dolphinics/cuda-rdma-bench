@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#include "types.h"
+#include "simple_types.h"
 
 
 /**
@@ -13,6 +13,7 @@ extern "C" {
  * Start DMA transfer from remote segment to local segment.
  * Data is transferred asynchronously.
  *
+ * \param[in]       adapterNo       local adapter number
  * \param[in]       localSegment    local segment descriptor handle
  * \param[in]       localOffset     offset in the local segment
  * \param[in]       remoteSegment   remote segment descriptor handle
@@ -28,7 +29,7 @@ extern "C" {
  * \note A successful return value does not mean that data was successfully transferred.
  *       Supply a callback function to check the status of the transfer.
  */
-int DmaRead(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
+int DmaRead(unsigned adapterNo, l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
 
 
 /**
@@ -37,6 +38,7 @@ int DmaRead(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegm
  * Start DMA transfer from local segment to remote segment. 
  * Data is transferred asynchronously.
  *
+ * \param[in]       adapterNo       local adapter number
  * \param[in]       localSegment    local segment descriptor handle
  * \param[in]       localOffset     offset in the local segment
  * \param[in]       remoteSegment   remote segment descriptor handle
@@ -50,7 +52,7 @@ int DmaRead(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegm
  * \note A successful return value does not mean that data was successfully transferred.
  *       Supply a callback function to check the status of the transfer.
  */
-int DmaWrite(l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
+int DmaWrite(unsigned adapterNo, l_segment_t localSegment, size_t localOffset, r_segment_t remoteSegment, size_t remoteOffset, size_t size, trans_cb_t callback, void* userData);
 
 
 /**
@@ -102,6 +104,7 @@ int AppendDmaVec(dma_vec_t vector, size_t localOffset, size_t remoteOffset, size
  * engine on the adapter where the remote segment is connected.
  *
  * \param[in]       vector          DMA vector descriptor handle
+ * \param[in]       adapterNo       local adapter number
  * \param[in]       localSegment    local segment descriptor handle
  * \param[in]       remoteSegment   remote segment descriptor handle
  * \param[in]       flags           additional flags for \c SCIStartDmaTransferVec
@@ -113,7 +116,7 @@ int AppendDmaVec(dma_vec_t vector, size_t localOffset, size_t remoteOffset, size
  * \note A successful return value does not mean that data was successfully transferred.
  *       Supply a callback function to check the status of the transfer.
  */
-int TransferDmaVec(dma_vec_t vector, l_segment_t localSegment, r_segment_t remoteSegment, unsigned flags, trans_cb_t callback, void* userData);
+int TransferDmaVec(dma_vec_t vector, unsigned adapterNo, l_segment_t localSegment, r_segment_t remoteSegment, unsigned flags, trans_cb_t callback, void* userData);
 
 
 #ifdef __cplusplus
