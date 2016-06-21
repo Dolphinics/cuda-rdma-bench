@@ -3,12 +3,17 @@
 
 #include <cuda.h>
 #include <memory>
-//#include <tr1/memory>
 
-//typedef std::tr1::shared_ptr<cudaStream_t> streamPtr;
-typedef std::shared_ptr<cudaStream_t> streamPtr;
+enum StreamSharingMode
+{ 
+    perTransfer,    // create a stream for every transfer
+    perDevice,      // create a stream per device
+    singleStream    // everyone use a single stream
+};
+
+typedef std::shared_ptr<cudaStream_t> StreamPtr;
 
 
-streamPtr retrieveStream(int device, bool shareDeviceStream, bool shareSingleStream);
+StreamPtr retrieveStream(int cudaDevice, StreamSharingMode streamSharing);
 
 #endif

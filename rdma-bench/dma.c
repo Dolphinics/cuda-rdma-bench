@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <string.h>
 #include <sisci_api.h>
 #include <sisci_types.h>
 #include <stdint.h>
@@ -24,6 +26,7 @@ struct callback_info
 
 struct dma_vector
 {
+    size_t          size;                       // total transfer size
     size_t          length;                     // number of elements in vector
     dis_dma_vec_t   vector[DIS_DMA_MAX_VECLEN]; // vector elements
 };
@@ -77,6 +80,7 @@ int CreateDmaVec(dma_vec_t* handle)
         return -errno;
     }
 
+    vector->size = 0;
     vector->length = 0;
     *handle = vector;
 
@@ -104,6 +108,8 @@ int AppendDmaVec(dma_vec_t vector, size_t loff, size_t roff, size_t size, unsign
     vector->vector[vector->length].local_offset = loff;
     vector->vector[vector->length].remote_offset = roff;
     vector->vector[vector->length].flags = flags;
+
+    vector->size += size;
     vector->length++;
 
     return 0;
@@ -155,18 +161,18 @@ int DmaRead(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, 
     int err;
     dma_vec_t vector;
 
-    if ((err = CreateDmaVec(&vector)) < 0)
+    if ((err = CreateDmaVec(&vector)) != 0)
     {
         return err;
     }
 
-    if ((err = AppendDmaVec(vector, loff, roff, size, 0)) < 0)
+    if ((err = AppendDmaVec(vector, loff, roff, size, 0)) != 0)
     {
         RemoveDmaVec(vector);
         return err;
     }
 
-    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, SCI_FLAG_DMA_READ, cb, udata)) < 0)
+    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, SCI_FLAG_DMA_READ, cb, udata)) != 0)
     {
         RemoveDmaVec(vector);
         return err;
@@ -182,18 +188,18 @@ int DmaWrite(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg,
     int err;
     dma_vec_t vector;
 
-    if ((err = CreateDmaVec(&vector)) < 0)
+    if ((err = CreateDmaVec(&vector)) != 0)
     {
         return err;
     }
 
-    if ((err = AppendDmaVec(vector, loff, roff, size, 0)) < 0)
+    if ((err = AppendDmaVec(vector, loff, roff, size, 0)) != 0)
     {
         RemoveDmaVec(vector);
         return err;
     }
 
-    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, 0, cb, udata)) < 0)
+    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, 0, cb, udata)) != 0)
     {
         RemoveDmaVec(vector);
         return err;

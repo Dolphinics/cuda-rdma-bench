@@ -18,7 +18,7 @@ int client(unsigned node)
 {
     r_segment_t segment;
 
-    if (ConnectRemoteSegment(&segment, 0, node, 10))
+    if (ConnectRemoteSegment(&segment, 0, node, 10) != 0)
     {
         return 1;
     }

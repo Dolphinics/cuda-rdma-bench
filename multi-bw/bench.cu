@@ -9,24 +9,11 @@
 #include "devbuf.h"
 #include "hostbuf.h"
 #include "stream.h"
+#include "event.h"
 
 using std::vector;
 using std::runtime_error;
 using std::string;
-
-
-
-struct StreamData
-{
-    int         device;
-    void*       buffer;
-    size_t      length;
-    streamPtr   stream;
-    cudaEvent_t started;
-    cudaEvent_t stopped;
-    double      elapsed;
-    double      bandwidth;
-};
 
 
 static string bytesToUnit(size_t size)
@@ -48,183 +35,179 @@ static string bytesToUnit(size_t size)
 }
 
 
-static double usecsElapsed(const StreamData& data)
+static string transferDirectionToString(cudaMemcpyKind direction)
 {
-    float milliseconds = .0f;
+    if (direction == cudaMemcpyHostToDevice)
+    {
+        return string("HtoD");
+    }
+    if (direction == cudaMemcpyDeviceToHost)
+    {
+        return string("DtoH");
+    }
 
-    cudaError_t err = cudaEventElapsedTime(&milliseconds, data.started, data.stopped);
+    return string("unknown");
+}
+
+
+static void timeTransfers(const vector<TransferSpec>& transferSpecs)
+{
+    cudaError_t err;
+
+    for (const TransferSpec& spec : transferSpecs)
+    {
+        cudaStream_t stream = *spec.cudaStream;
+        const DeviceBufferPtr& deviceBuffer = spec.deviceBuffer;
+        const HostBufferPtr& hostBuffer = spec.hostBuffer;
+
+        const void* src = spec.direction == cudaMemcpyDeviceToHost ? deviceBuffer->buffer : hostBuffer->buffer;
+        void* dst = spec.direction == cudaMemcpyDeviceToHost ? hostBuffer->buffer : deviceBuffer->buffer;
+        size_t size = min(deviceBuffer->length, hostBuffer->length); 
+
+        err = cudaEventRecord(spec.cudaEvents->started, stream);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        err = cudaMemcpyAsync(dst, src, size, spec.direction, stream);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+
+        err = cudaEventRecord(spec.cudaEvents->stopped, stream);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+    }
+}
+
+
+static void syncStreams(const vector<TransferSpec>& transferSpecs)
+{
+    cudaError_t err;
+
+    for (const TransferSpec& spec : transferSpecs)
+    {
+        err = cudaStreamSynchronize(*spec.cudaStream);
+        if (err != cudaSuccess)
+        {
+            throw runtime_error(cudaGetErrorString(err));
+        }
+    }
+}
+
+
+void runBandwidthTest(const vector<TransferSpec>& transferSpecs)
+{
+    cudaError_t err;
+
+    // Create timing events on the null stream
+    TimingDataPtr nullStreamTiming = createTimingData();
+    err = cudaEventRecord(nullStreamTiming->started);
     if (err != cudaSuccess)
     {
         throw runtime_error(cudaGetErrorString(err));
     }
 
-    return (double) milliseconds * 1000;
-}
-
-
-static void measureMemcpyBandwidth(void* hostBuffer, vector<StreamData>& streamData, cudaMemcpyKind kind)
-{
-    cudaError_t err;
-
-    // Start transfers
-    for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
-    {
-        const void* src = kind == cudaMemcpyDeviceToHost ? it->buffer : hostBuffer;
-        void* dst = kind == cudaMemcpyDeviceToHost ? hostBuffer : it->buffer;
-
-        err = cudaEventRecord(it->started, *it->stream);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        err = cudaMemcpyAsync(dst, src, it->length, kind, *it->stream);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        err = cudaEventRecord(it->stopped, *it->stream);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-    }
-
-    // Synchronize events and record results
-    for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
-    {
-        err = cudaEventSynchronize(it->stopped);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        it->elapsed = usecsElapsed(*it);
-        it->bandwidth = (double) it->length / it->elapsed;
-    }
-}
-
-
-static void runBandwidthTest(const HostBuffer& hostBuffer, const vector<DeviceBuffer>& deviceBuffers, cudaMemcpyKind kind, bool shareDeviceStream, bool shareGlobalStream)
-{
-    cudaError_t err;
-
-    // Create streams and events
-    vector<StreamData> streamData;
-    for (vector<DeviceBuffer>::const_iterator it = deviceBuffers.begin(); it != deviceBuffers.end(); ++it)
-    {
-        StreamData data;
-        data.device = it->device;
-        data.buffer = it->buffer;
-        data.length = it->length;
-        data.elapsed = 0;
-        data.bandwidth = 0;
-
-        data.stream = retrieveStream(it->device, shareDeviceStream, shareGlobalStream);
-
-        err = cudaEventCreate(&data.started);
-        if (err != cudaSuccess)
-        {
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        err = cudaEventCreate(&data.stopped);
-        if (err != cudaSuccess)
-        {
-            cudaEventDestroy(data.started);
-            throw runtime_error(cudaGetErrorString(err));
-        }
-
-        streamData.push_back(data);
-    }
-
-    // Run measurements
+    // Execute transfers
     try
     {
-        fprintf(stdout, "\n====================    %-14s   (%11s)    ====================\n",
-                kind == cudaMemcpyDeviceToHost ? "DEVICE TO HOST" : "HOST TO DEVICE",
-                bytesToUnit(hostBuffer.length).c_str()
-               );
-
-        measureMemcpyBandwidth(hostBuffer.buffer, streamData, kind);
+        fprintf(stdout, "Executing transfers.....");
+        fflush(stdout);
+        timeTransfers(transferSpecs);
+        fprintf(stdout, "DONE\n");
+        fflush(stdout);
     }
     catch (const runtime_error& e)
     {
-        fprintf(stderr, "Unexpected error, aborting...\n");
+        fprintf(stdout, "FAIL\n");
+        fflush(stdout);
+        throw e;
     }
 
-    // Print results and clean up
-    for (vector<StreamData>::iterator it = streamData.begin(); it != streamData.end(); ++it)
+    // Synchronize all streams
+    try
     {
-        // get device name
-        cudaDeviceProp prop;
-        err = cudaGetDeviceProperties(&prop, it->device);
+        fprintf(stdout, "Synchronizing streams...");
+        fflush(stdout);
+
+        syncStreams(transferSpecs);
+
+        err = cudaEventRecord(nullStreamTiming->stopped);
         if (err != cudaSuccess)
         {
-            fprintf(stderr, "WARNING: %s\n", cudaGetErrorString(err));
-            prop.name[0] = '\0';
+            throw runtime_error(cudaGetErrorString(err));
         }
 
-        // print results
-        fprintf(stdout, "%4d %-25s %10s %8.0f µs %10.2f MiB/s\n",
-                it->device, 
-                prop.name, 
-                bytesToUnit(it->length).c_str(), 
-                it->elapsed,
-                it->bandwidth
-               );
-
-        // clean up
-        cudaEventDestroy(it->started);
-        cudaEventDestroy(it->stopped);
-    }
-}
-
-
-void benchmark(const vector<HostBuffer>& buffers, const vector<int>& devices, const vector<cudaMemcpyKind>& modes, bool shareDeviceStream, bool shareGlobalStream)
-{
-    cudaError_t err;
-
-    for (vector<cudaMemcpyKind>::const_iterator kindIt = modes.begin(); kindIt != modes.end(); ++kindIt)
-    {
-        cudaMemcpyKind kind = *kindIt;
-
-        for (vector<HostBuffer>::const_iterator bufIt = buffers.begin(); bufIt != buffers.end(); ++bufIt)
+        err = cudaEventSynchronize(nullStreamTiming->stopped);
+        if (err != cudaSuccess)
         {
-            // Get host buffer
-            const HostBuffer& buffer = *bufIt;
-
-            // Create device buffers and synchronize devices
-            vector<DeviceBuffer> deviceBuffers;
-            for (vector<int>::const_iterator devIt = devices.begin(); devIt != devices.end(); ++devIt)
-            {
-                // TODO: Create StreamData here instead?
-
-                int device = *devIt;
-
-                // synchronize device
-                err = cudaSetDevice(device);
-                if (err != cudaSuccess)
-                {
-                    throw runtime_error(cudaGetErrorString(err));
-                }
-
-                err = cudaDeviceSynchronize();
-                if (err != cudaSuccess)
-                {
-                    throw runtime_error(cudaGetErrorString(err));
-                }
-
-                // create device buffer
-                deviceBuffers.push_back(DeviceBuffer(device, buffer.length));
-            }
-
-            // Run bandwidth test
-            runBandwidthTest(buffer, deviceBuffers, kind, shareDeviceStream, shareGlobalStream);
-
-            // TODO: Print results here?
+            throw runtime_error(cudaGetErrorString(err));
         }
+
+        fprintf(stdout, "DONE\n");
+        fflush(stdout);
+    } 
+    catch (const runtime_error& e)
+    {
+        fprintf(stdout, "FAIL\n");
+        fflush(stdout);
+        throw e;
     }
-    printf("\n");
+
+
+    // Print results
+    fprintf(stdout, "\n");
+    fprintf(stdout, "=====================================================================================\n");
+    fprintf(stdout, " %2s   %-15s   %13s   %-8s   %-12s   %-10s\n",
+            "ID", "Device name", "Transfer size", "Direction", "Time elapsed", "Bandwidth");
+    fprintf(stdout, "-------------------------------------------------------------------------------------\n");
+    fflush(stdout);
+
+    size_t totalSize = 0;
+    double aggrElapsed = .0;
+    double timedElapsed = nullStreamTiming->usecs();
+
+    for (const TransferSpec& res : transferSpecs)
+    {
+        size_t size = min(res.deviceBuffer->length, res.hostBuffer->length);
+        double elapsed = res.cudaEvents->usecs();
+        double bandwidth = (double) size / elapsed;
+
+        totalSize += size;
+        aggrElapsed += elapsed;
+
+        cudaDeviceProp prop;
+        err = cudaGetDeviceProperties(&prop, res.deviceBuffer->device);
+        if (err != cudaSuccess)
+        {
+            prop.name[0] = 'E';
+            prop.name[1] = 'R';
+            prop.name[2] = 'R';
+            prop.name[3] = '!';
+            prop.name[4] = '\0';
+        }
+
+        fprintf(stdout, " %2d   %-15s   %13s    %8s   %9.0f µs    %10.2f MiB/s \n",
+                res.deviceBuffer->device, 
+                prop.name, 
+                bytesToUnit(size).c_str(), 
+                transferDirectionToString(res.direction).c_str(),
+                elapsed,
+                bandwidth
+               );
+        fflush(stdout);
+    }
+    fprintf(stdout, "=====================================================================================\n");
+
+    fprintf(stdout, "\n");
+    fprintf(stdout, "Aggregated total time      : %12.0f µs\n", aggrElapsed);
+    fprintf(stdout, "Aggregated total bandwidth : %12.2f MiB/s\n", (double) totalSize / aggrElapsed);
+    fprintf(stdout, "Estimated elapsed time     : %12.0f µs\n", timedElapsed);
+    fprintf(stdout, "Timed total bandwidth      : %12.2f MiB/s\n", (double) totalSize / timedElapsed);
+    fprintf(stdout, "\n");
+    fflush(stdout);
 }

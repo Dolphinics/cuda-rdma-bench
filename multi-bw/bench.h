@@ -2,17 +2,22 @@
 #define __BENCHMARK_H__
 
 #include <cuda.h>
-#include <vector>
 #include "devbuf.h"
 #include "hostbuf.h"
+#include "stream.h"
+#include "event.h"
 
 
-void benchmark(
-        const std::vector<HostBuffer>& hostBuffers, 
-        const std::vector<int>& cudaDevices, 
-        const std::vector<cudaMemcpyKind>& transferModes,
-        bool shareDeviceStream,
-        bool shareGlobalStream
-        );
+struct TransferSpec
+{
+    DeviceBufferPtr             deviceBuffer;
+    HostBufferPtr               hostBuffer;
+    StreamPtr                   cudaStream;
+    cudaMemcpyKind              direction;
+    TimingDataPtr               cudaEvents;
+};
+
+
+void runBandwidthTest(const std::vector<TransferSpec>& transferSpecifications);
 
 #endif

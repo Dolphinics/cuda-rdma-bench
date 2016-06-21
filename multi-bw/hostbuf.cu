@@ -3,60 +3,31 @@
 #include <exception>
 #include <stdexcept>
 #include "hostbuf.h"
-#include <errno.h>
-#include <string.h>
 
 
-struct HostBufferData
+static void* createHostBuffer(size_t length, unsigned int flags)
 {
-    size_t  length;
-    void*   buffer;
-};
+    void* buffer;
 
-
-static void deleteData(HostBufferData* data)
-{
-    if (data->buffer != NULL)
-    {
-        cudaFreeHost(data->buffer);
-    }
-
-    delete data;
-}
-
-
-HostBuffer::HostBuffer(size_t len, unsigned int flags)
-    : pData(new HostBufferData, deleteData)
-    , length(pData->length)
-    , buffer(pData->buffer)
-{
-    pData->buffer = NULL;
-    pData->length = len;
-
-    cudaError_t err;
-    err = cudaHostAlloc(&pData->buffer, len, flags);
+    cudaError_t err = cudaHostAlloc(&buffer, length, flags);
     if (err != cudaSuccess)
     {
-        throw std::runtime_error(strerror(errno));
+        throw std::runtime_error(cudaGetErrorString(err));
     }
-    
-    length = len;
-    buffer = pData->buffer;
+
+    return buffer;
 }
 
 
-HostBuffer::HostBuffer(const HostBuffer& rhs)
-    : pData(rhs.pData)
-    , length(pData->length)
-    , buffer(pData->buffer)
+HostBuffer::HostBuffer(size_t length, unsigned int flags)
+    : length(length)
+    , buffer(createHostBuffer(length, flags))
 {
 }
 
 
-HostBuffer& HostBuffer::operator=(const HostBuffer& rhs)
+HostBuffer::~HostBuffer()
 {
-    pData = rhs.pData;
-    length = pData->length;
-    buffer = pData->buffer;
-    return *this;
+    cudaFreeHost(buffer);
 }
+

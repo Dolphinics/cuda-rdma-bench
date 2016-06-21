@@ -5,74 +5,36 @@
 #include "devbuf.h"
 
 
-struct DeviceBufferData
-{
-    int          device;
-    size_t       length;
-    void*        buffer;
-
-    DeviceBufferData(int dev, size_t len);
-    ~DeviceBufferData();
-};
-
-
-DeviceBufferData::DeviceBufferData(int dev, size_t len)
-    : device(dev)
-    , length(len)
-    , buffer(NULL)
+static void* createDeviceBuffer(int device, size_t length)
 {
     cudaError_t err;
 
-    err = cudaSetDevice(dev);
+    err = cudaSetDevice(device);
     if (err != cudaSuccess)
     {
         throw std::runtime_error(cudaGetErrorString(err));
     }
 
-    err = cudaMalloc(&buffer, len);
+    void* buffer;
+    err = cudaMalloc(&buffer, length);
     if (err != cudaSuccess)
     {
         throw std::runtime_error(cudaGetErrorString(err));
     }
+
+    return buffer;
 }
 
 
-DeviceBufferData::~DeviceBufferData()
-{
-    if (buffer != NULL)
-    {
-        cudaFree(buffer);
-    }
-    
-    device = -1;
-    length = 0;
-    buffer = NULL;
+DeviceBuffer::DeviceBuffer(int device, size_t length)
+    : device(device)
+    , length(length)
+    , buffer(createDeviceBuffer(device, length))
+{ 
 }
 
 
-DeviceBuffer::DeviceBuffer(int dev, size_t len)
-    : pData(new DeviceBufferData(dev, len))
+DeviceBuffer::~DeviceBuffer()
 {
-    device = pData->device;
-    length = pData->length;
-    buffer = pData->buffer;
-}
-
-
-DeviceBuffer::DeviceBuffer(const DeviceBuffer& rhs)
-    : pData(rhs.pData)
-{
-    device = pData->device;
-    length = pData->length;
-    buffer = pData->buffer;
-}
-
-
-DeviceBuffer& DeviceBuffer::operator=(const DeviceBuffer& rhs)
-{
-    pData = rhs.pData;
-    device = pData->device;
-    length = pData->length;
-    buffer = pData->buffer;
-    return *this;
+    cudaFree(buffer);
 }
