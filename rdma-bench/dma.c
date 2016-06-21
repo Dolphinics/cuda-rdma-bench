@@ -37,11 +37,13 @@ static sci_callback_action_t callback(void* cbInfo, sci_dma_queue_t dmaQueue, sc
 {
     uint64_t ts_now = 0; // TODO: get timestamp
 
+    debug("DMA transfer complete");
+
     sci_error_t err;
-    SCIRemoveDMAQueue(dmaQueue, 0, &err);
-    if (err != SCI_ERR_OK)
+    //SCIRemoveDMAQueue(dmaQueue, 0, &err);
+    //if (err != SCI_ERR_OK)
     {
-        error("Failed to remove DMA queue: %s", GetErrorString(err));
+        //error("Failed to remove DMA queue: %s", GetErrorString(err));
     }
 
     if (status != SCI_ERR_OK)
@@ -98,7 +100,7 @@ int RemoveDmaVec(dma_vec_t handle)
 
 int AppendDmaVec(dma_vec_t vector, size_t loff, size_t roff, size_t size, unsigned flags)
 {
-    if (vector->length < DIS_DMA_MAX_VECLEN)
+    if (vector->length >= DIS_DMA_MAX_VECLEN)
     {
         warn("DMA transfer vector is already maximum size");
         return -1;
@@ -135,7 +137,6 @@ int TransferDmaVec(dma_vec_t vector, unsigned adapt_no, l_segment_t lseg, r_segm
     info->bytes = 0; // TODO
     info->ts_start = 0; // TODO
 
-
     SCICreateDMAQueue(lseg->sci_d, &queue, adapt_no, 1, 0, &err);
     if (err != SCI_ERR_OK)
     {
@@ -144,6 +145,7 @@ int TransferDmaVec(dma_vec_t vector, unsigned adapt_no, l_segment_t lseg, r_segm
         return -1;
     }
 
+    debug("Executing DMA transfer");
     SCIStartDmaTransferVec(queue, lseg->seg_d, rseg->seg_d, vector->length, vector->vector, &callback, info, SCI_FLAG_USE_CALLBACK | flags, &err);
     if (err != SCI_ERR_OK)
     {
@@ -156,7 +158,7 @@ int TransferDmaVec(dma_vec_t vector, unsigned adapt_no, l_segment_t lseg, r_segm
 }
 
 
-int DmaRead(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, size_t roff, size_t size, trans_cb_t cb, void* udata)
+int DmaRead(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, size_t roff, size_t size, trans_cb_t cb, void* data)
 {
     int err;
     dma_vec_t vector;
@@ -172,7 +174,7 @@ int DmaRead(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, 
         return err;
     }
 
-    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, SCI_FLAG_DMA_READ, cb, udata)) != 0)
+    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, SCI_FLAG_DMA_READ, cb, data)) != 0)
     {
         RemoveDmaVec(vector);
         return err;
@@ -183,7 +185,7 @@ int DmaRead(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, 
 }
 
 
-int DmaWrite(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, size_t roff, size_t size, trans_cb_t cb, void* udata)
+int DmaWrite(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg, size_t roff, size_t size, trans_cb_t cb, void* data)
 {
     int err;
     dma_vec_t vector;
@@ -199,7 +201,7 @@ int DmaWrite(unsigned adapt_no, l_segment_t lseg, size_t loff, r_segment_t rseg,
         return err;
     }
 
-    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, 0, cb, udata)) != 0)
+    if ((err = TransferDmaVec(vector, adapt_no, lseg, rseg, 0, cb, data)) != 0)
     {
         RemoveDmaVec(vector);
         return err;

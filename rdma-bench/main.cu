@@ -16,6 +16,12 @@ static void stop_server()
 }
 
 
+static void cb(trans_status_t success)
+{
+    printf("done\n");
+    keep_running = 0;
+}
+
 
 int client(unsigned node)
 {
@@ -46,8 +52,13 @@ int client(unsigned node)
     }
 
     *ptr = 0xb00bbabe;
+    printf("%x\n", *ptr);
 
-    DmaWrite(0, lsegment, 0, rsegment, 0, 4, NULL, NULL);
+    DmaWrite(0, lsegment, 0, rsegment, 0, 4, (trans_cb_t) &cb, NULL);
+
+    while (keep_running)
+    {
+    }
 
     DisconnectRemoteSegment(rsegment);
     RemoveLocalSegment(lsegment);
