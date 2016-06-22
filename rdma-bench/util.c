@@ -5,5 +5,5 @@
 
 unsigned GetNodeIdByName(const char* hostname)
 {
-    return 12;
+    return 16;
 }

@@ -68,7 +68,8 @@ static sci_callback_action_t callback(void* cbInfo, sci_dma_queue_t dmaQueue, sc
     }
 
     free(info);
-    return SCI_CALLBACK_CANCEL;
+    //return SCI_CALLBACK_CANCEL;
+    return SCI_CALLBACK_CONTINUE;
 }
 
 

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <sisci_api.h>
 #include <signal.h>
-#include <unistd.h>
 #include "local.h"
 #include "remote.h"
 #include "util.h"
@@ -23,6 +22,22 @@ static void cb(trans_status_t success)
 }
 
 
+
+void dump_memory(void* ptr, size_t len)
+{
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (i % 16 == 0)
+        {
+            printf("\n");
+        }
+
+        printf("%02x ", *((uint8_t*) ptr + i));
+    }
+    printf("\n");
+}
+
+
 int client(unsigned node)
 {
     r_segment_t rsegment;
@@ -33,16 +48,18 @@ int client(unsigned node)
     }
 
     l_segment_t lsegment;
-    if (CreateLocalSegment(&lsegment, 10, 0) != 0)
+    if (CreateLocalSegment(&lsegment, 11, 0) != 0)
     {
         return 1;
     }
 
-    if (AllocSegmentMem(lsegment, 4) != 0)
+    if (AllocSegmentMem(lsegment, 4096) != 0)
     {
         RemoveLocalSegment(lsegment);
         return 1;
     }
+    
+    memset(GetLocalSegmentPtr(lsegment), 'a', 4096);
 
     int* ptr = (int*) GetLocalSegmentPtr(lsegment);
     if (ptr == NULL)
@@ -54,11 +71,16 @@ int client(unsigned node)
     *ptr = 0xb00bbabe;
     printf("%x\n", *ptr);
 
-    DmaWrite(0, lsegment, 0, rsegment, 0, 4, (trans_cb_t) &cb, NULL);
+//    dump_memory(GetLocalSegmentPtr(lsegment), 4096);
+    printf("\n\n\n\n\n\n\n");
+
+    DmaRead(0, lsegment, 0, rsegment, 0, 4, (trans_cb_t) &cb, NULL);
 
     while (keep_running)
     {
     }
+
+//    dump_memory(GetLocalSegmentPtr(lsegment), 4096);
 
     DisconnectRemoteSegment(rsegment);
     RemoveLocalSegment(lsegment);
@@ -75,13 +97,14 @@ int server()
         return 1;
     }
 
-    if (AllocSegmentMem(segment, 4) != 0)
+    if (AllocSegmentMem(segment, 4096) != 0)
     {
         RemoveLocalSegment(segment);
         return 1;
     }
+    memset(GetLocalSegmentPtr(segment), 'c', 4096);
 
-    int* ptr = (int*) GetLocalSegmentPtr(segment);
+    uint32_t* ptr = (uint32_t*) GetLocalSegmentPtr(segment);
     if (ptr == NULL)
     {
         RemoveLocalSegment(segment);
@@ -94,8 +117,6 @@ int server()
 
     while (keep_running)
     {
-        printf("%x\n", *ptr);
-        sleep(1);
     }
     
     RemoveLocalSegment(segment);
