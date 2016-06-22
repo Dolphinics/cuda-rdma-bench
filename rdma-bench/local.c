@@ -3,7 +3,7 @@
 #include <string.h>
 #include <limits.h>
 #include <sisci_api.h>
-#ifdef SUPPORT_CUDA
+#ifndef NO_CUDA
 #include <cuda.h>
 #endif
 #include "simple_types.h"
@@ -97,9 +97,9 @@ int AllocSegmentMem(l_segment_t segment, size_t size)
 }
 
 
+#ifndef NO_CUDA
 int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
 {
-#ifdef SUPPORT_CUDA
     // FIXME: Return errnos for errors
 
     if (segment->attached)
@@ -140,12 +140,8 @@ int AttachCudaMem(l_segment_t segment, void* devicePtr, size_t size)
     // TODO: Log ioaddr of segment
     debug("Attached memory for segment %u", segment->seg_id);
     return 0;
-    
-#else
-    error("Not compiled with CUDA support");
-    return -1;
-#endif
 }
+#endif
 
 
 // Helper function to export a segment

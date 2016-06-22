@@ -1,12 +1,22 @@
 PROJECT := $(notdir $(shell pwd))
 OBJECTS	:= main.o log.o errstr.o local.o remote.o util.o dma.o
 
-CC	:= gcc
-#NVCC 	:= /usr/local/cuda/bin/nvcc
-CFLAGS	:= -Wall -Wextra -D_REENTRANT -g
+CUDA_HOME := /usr/local/cuda
 
-#INCLUDE	:= /usr/local/cuda/include /opt/DIS/include /opt/DIS/include/dis
+CC	:= gcc
+NVCC	:= gcc
+CFLAGS	:= -Wall -Wextra -D_REENTRANT -g
 INCLUDE	:= /opt/DIS/include /opt/DIS/include/dis
+LIBS	:= -lsisci -lrt -lpthread
+
+ifneq ($(wildcard $(CUDA_HOME)/*),)
+	NVCC 	:= $(CUDA_HOME)/bin/nvcc
+	INCLUDE += $(CUDA_HOME)/include
+	LIBS	+= -lcuda
+else
+	CFLAGS += -DNO_CUDA
+endif
+
 
 .PHONY: all clean $(PROJECT)
 
@@ -16,8 +26,7 @@ clean:
 	-$(RM) $(PROJECT) $(OBJECTS)
 
 $(PROJECT): $(OBJECTS)
-#	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lcuda -lrt -lpthread
-	$(CC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lrt -lpthread
+	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 $(LIBS)
 
 %.o: %.c
 	$(CC) -x c -std=gnu99 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c 

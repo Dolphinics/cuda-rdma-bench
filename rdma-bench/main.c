@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <sisci_api.h>
 #include <signal.h>
+#include <string.h>
 #include "local.h"
 #include "remote.h"
 #include "util.h"

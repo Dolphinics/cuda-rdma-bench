@@ -76,6 +76,7 @@ int AttachPhysAddr(l_segment_t segment, uintptr_t addr, size_t size, unsigned fl
 int AttachVirtMem(l_segment_t segment, void* ptr, size_t size);
 
 
+#ifndef NO_CUDA
 /**
  * \brief Attach GPU memory to a local segment
  *
@@ -96,6 +97,7 @@ int AttachVirtMem(l_segment_t segment, void* ptr, size_t size);
  * \note SISCI driver must be built with CUDA support.
  */
 int AttachCudaMem(l_segment_t segment, void* cudaPtr, size_t size);
+#endif
 
 
 /**
