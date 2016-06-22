@@ -16,7 +16,7 @@ extern "C" {
  *
  * \returns node ID of the host
  */
-unsigned GetNodeIdByName(const char* hostname);
+int GetNodeIdByName(const char* hostname);
 
 
 /**
