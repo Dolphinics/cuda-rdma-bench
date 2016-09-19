@@ -4,6 +4,8 @@
 # Unignore makefiles
 !Makefile
 
+!LICENSE
+
 # Unignore all with extensions
 !*.*
 
