@@ -62,7 +62,7 @@ static sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt
 }
 
 
-static void run_server(unsigned adapter, const gpu_info_t* gpu, unsigned id, size_t size)
+static void run_server(unsigned adapter, const gpu_info_t* gpu, unsigned id, size_t size, int global)
 {
     sci_error_t err;
     sci_desc_t sd;
@@ -84,12 +84,12 @@ static void run_server(unsigned adapter, const gpu_info_t* gpu, unsigned id, siz
     log_debug("Creating buffer and filling with random value %02x", byte);
     if (gpu != NULL)
     {
-        err = make_gpu_segment(sd, adapter, id & ID_MASK, &segment, size, gpu, &buffer);
+        err = make_gpu_segment(sd, adapter, id & ID_MASK, &segment, size, gpu, &buffer, global);
         gpu_memset(gpu->id, buffer, size, byte);
     }
     else
     {
-        err = make_ram_segment(sd, adapter, id & ID_MASK, &segment, size, &mapping, &buffer);
+        err = make_ram_segment(sd, adapter, id & ID_MASK, &segment, size, &mapping, &buffer, global);
         ram_memset(buffer, size, byte);
     }
 
@@ -153,7 +153,7 @@ close_desc:
 }
 
 
-void server(unsigned adapter, int gpu, unsigned id, size_t size)
+void server(unsigned adapter, int gpu, unsigned id, size_t size, int global)
 {
     sci_error_t err = SCI_ERR_OK;
     sci_desc_t sd;
@@ -171,7 +171,7 @@ void server(unsigned adapter, int gpu, unsigned id, size_t size)
     gpu_info_t* local_gpu;
 
     unsigned bufinfo_id = (('G' ^ 'P' ^ 'U') << ID_MASK_BITS) | id;
-    err = make_ram_segment(sd, adapter, bufinfo_id, &gi_segment, sizeof(gpu_info_t), &gi_mapping, (void**) &local_gpu);
+    err = make_ram_segment(sd, adapter, bufinfo_id, &gi_segment, sizeof(gpu_info_t), &gi_mapping, (void**) &local_gpu, 0);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create buffer info segment");
@@ -193,7 +193,7 @@ void server(unsigned adapter, int gpu, unsigned id, size_t size)
     SCISetSegmentAvailable(gi_segment, adapter, 0, &err);
 
     // Run server
-    run_server(adapter, gpu != NO_GPU ? local_gpu : NULL, id, size);
+    run_server(adapter, gpu != NO_GPU ? local_gpu : NULL, id, size, global);
 
     SCISetSegmentUnavailable(gi_segment, adapter, 0, &err);
 

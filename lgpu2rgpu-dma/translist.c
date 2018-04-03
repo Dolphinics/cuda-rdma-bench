@@ -108,7 +108,7 @@ static int connect_remote_segment(translist_t list)
 }
 
 
-int translist_create(translist_t* handle, unsigned adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu)
+int translist_create(translist_t* handle, unsigned adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu, int gl)
 {
     sci_error_t err = SCI_ERR_OK;
     translist_t list;
@@ -177,11 +177,11 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
 
     if (gpu != NO_GPU)
     {
-        err = make_gpu_segment(list->sd, adapter, local_segment, &list->local_segment, list->segment_size, &list->local_gpu_info, &list->local_buf_ptr);
+        err = make_gpu_segment(list->sd, adapter, local_segment, &list->local_segment, list->segment_size, &list->local_gpu_info, &list->local_buf_ptr, gl);
     }
     else
     {
-        err = make_ram_segment(list->sd, adapter, local_segment, &list->local_segment, list->segment_size, &list->buf_mapping, &list->local_buf_ptr);
+        err = make_ram_segment(list->sd, adapter, local_segment, &list->local_segment, list->segment_size, &list->buf_mapping, &list->local_buf_ptr, gl);
     }
 
     if (err != SCI_ERR_OK)

@@ -54,7 +54,7 @@ typedef struct {
  *
  * Returns 0 on success or a negative value on error
  */
-int translist_create(translist_t* handle, unsigned local_adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu_id);
+int translist_create(translist_t* handle, unsigned local_adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu_id, int global);
 
 
 /* Get transfer list descriptor

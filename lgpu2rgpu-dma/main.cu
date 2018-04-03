@@ -20,6 +20,7 @@ static struct option options[] = {
     { .name = "local-id", .has_arg = 1, .flag = NULL, .val = 'l' },
     { .name = "remote-id", .has_arg = 1, .flag = NULL, .val = 'r' },
     { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
+    { .name = "global", .has_arg = 0, .flag = NULL, .val = 1 },
     { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 'g' },
     { .name = "type", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "bench", .has_arg = 1, .flag = NULL, .val = 't' },
@@ -27,7 +28,7 @@ static struct option options[] = {
     { .name = "test", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "count", .has_arg = 1, .flag = NULL, .val = 'c' },
     { .name = "verbose", .has_arg = 0, .flag = NULL, .val = 'v' },
-    { .name = "iec", .has_arg = 0, .flag = NULL, .val = 'i' },
+    { .name = "si", .has_arg = 0, .flag = NULL, .val = 2 },
     { .name = "vec", .has_arg = 1, .flag = NULL, .val = 'V'},
     { .name = "len", .has_arg = 1, .flag = NULL, .val = 'L' },
     { .name = "help", .has_arg = 0, .flag = NULL, .val = 'h' },
@@ -148,11 +149,12 @@ static void give_usage(const char* progname)
             "  --vec=<number>           divide segment into a number of DMA vector elements (defaults to 1)\n"
             "  --len=<number>           repeat the entire vector a number of times (defaults to 1)\n"
             "\nOptional arguments (both client and server mode)\n"
+            "  --global                 create local segment with SCI_FLAG_DMA_GLOBAL\n"
             "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
             "  --local-id=<segment id>  number identifying the local segment\n"
             "  --gpu=<gpu id>           specify a local GPU (if not given, buffer is allocated in RAM)\n"
             "  --verbose                increase verbosity level\n"
-            "  --iec                    use IEC units (1024) instead of SI units (1000)\n"
+            "  --si                     use SI units (1000s) instead of IEC units (1024s)\n"
             "  --help                   show list of local GPUs and benchmark types\n"
             , progname, progname);
 }
@@ -169,13 +171,15 @@ int main(int argc, char** argv)
     int local_gpu_id = NO_GPU;
 
     size_t local_segment_count = 0;
-    size_t local_segment_factor = 1e3;
+    size_t local_segment_factor = 1 << 10;
 
     size_t vec_div = 1;
     size_t vec_len = 1;
 
     size_t repeat_count = 1;
     bench_mode_t mode = BENCH_DO_NOTHING;
+
+    int global = 0;
 
     /* Do shortcut */
     if (argc < 2)
@@ -188,7 +192,7 @@ int main(int argc, char** argv)
     int opt, idx;
     char* str;
 
-    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:viV:L:h", options, &idx)) != -1)
+    while ((opt = getopt_long(argc, argv, "-:a:n:l:r:s:g:m:c:vV:L:h", options, &idx)) != -1)
     {
         switch (opt)
         {
@@ -292,9 +296,9 @@ int main(int argc, char** argv)
                 ++verbosity;
                 break;
 
-            case 'i': // use IEC units instead of SI
-                log_debug("Using IEC units");
-                local_segment_factor = 1 << 10;
+            case 2: // use SI units instead of IEC units
+                log_debug("Using SI units");
+                local_segment_factor = 1e3;
                 break;
 
             case 'V': // set DMA vector element length
@@ -315,6 +319,10 @@ int main(int argc, char** argv)
                     log_error("Argument --len must be at least 1");
                     exit('L');
                 }
+                break;
+
+            case 1:
+                global = 1;
                 break;
         }
     }
@@ -396,7 +404,7 @@ int main(int argc, char** argv)
 
         signal(SIGINT, (sig_t) &stop_server);
         signal(SIGTERM, (sig_t) &stop_server);
-        server(local_adapter, local_gpu_id, local_segment_id, local_segment_count * local_segment_factor);
+        server(local_adapter, local_gpu_id, local_segment_id, local_segment_count * local_segment_factor, global);
     }
     else
     {
@@ -432,7 +440,7 @@ int main(int argc, char** argv)
         log_info("Initializing transfer list...");
 
         translist_t ts;
-        if (translist_create(&ts, local_adapter, local_segment_id, remote_node_id, remote_segment_id, local_gpu_id) != 0)
+        if (translist_create(&ts, local_adapter, local_segment_id, remote_node_id, remote_segment_id, local_gpu_id, global) != 0)
         {
             log_error("Unexpected error when creating transfer list, aborting...");
             SCITerminate();

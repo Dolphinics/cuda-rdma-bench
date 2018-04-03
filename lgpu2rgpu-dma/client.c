@@ -10,10 +10,16 @@
 #include "ram.h"
 
 
-static int verify_transfer(translist_desc_t* desc)
+static int verify_transfer(unsigned flags, translist_desc_t* desc)
 {
     sci_error_t err;
     sci_map_t remote_buf_map;
+
+    if (!!(flags & SCI_FLAG_DMA_GLOBAL))
+    {
+        log_debug("Global DMA can not be verified");
+        return 1;
+    }
 
     volatile void* remote_ptr;
     remote_ptr = SCIMapRemoteSegment(desc->segment_remote, &remote_buf_map, 0, desc->segment_size, NULL, 0, &err);
@@ -68,6 +74,7 @@ static size_t create_dma_vec(translist_t tl, dis_dma_vec_t* vec)
         total_size += entry.size;
     }
 
+    log_debug("Created DMA vector with %zu entries", veclen);
     return total_size;
 }
 
@@ -179,7 +186,12 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
 {
     sci_error_t err;
     sci_dma_queue_t q;
+    sci_map_t remote_map;
     size_t veclen = translist_size(tl);
+
+    // Create DMA transfer vector
+    dis_dma_vec_t vec[veclen];
+    result->total_size = create_dma_vec(tl, vec);
 
     // Create DMA queue
     SCICreateDMAQueue(tsd->sisci_desc, &q, adapter, 1, 0, &err);
@@ -189,9 +201,18 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
         return;
     }
 
-    // Create DMA transfer vector
-    dis_dma_vec_t vec[veclen];
-    result->total_size = create_dma_vec(tl, vec);
+    // Map remote segment if not global DMA
+    if (!(flags & SCI_FLAG_DMA_GLOBAL))
+    {
+        SCIMapRemoteSegment(tsd->segment_remote, &remote_map, 0, tsd->segment_size, NULL, 0, &err);
+        if (err != SCI_ERR_OK)
+        {
+            log_error("Failed to map remote segment");
+            goto remove;
+        }
+
+        log_debug("Mapped remote segment for DMA");
+    }
 
     // Do DMA transfer
     log_debug("Performing DMA transfer of %lu-sized vector %d times", veclen, repeat);
@@ -220,6 +241,22 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
 
     result->total_runtime = end - start;
 
+    // Release remote segment if not global DMA
+    if (!(flags & SCI_FLAG_DMA_GLOBAL))
+    {
+        do
+        {
+            SCIUnmapSegment(remote_map, 0, &err);
+        }
+        while (err == SCI_ERR_BUSY);
+
+        if (err != SCI_ERR_OK)
+        {
+            log_error("Failed to unmap remote segment");
+        }
+    }
+
+remove:
     // Clean up and quit
     SCIRemoveDMAQueue(q, 0, &err);
     if (err != SCI_ERR_OK)
@@ -268,6 +305,15 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
             fetch_data = 1;
             /* intentional fall-through */
         case BENCH_DMA_PUSH_TO_REMOTE:
+            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
+            break;
+
+        case BENCH_DMA_PULL_FROM_REMOTE_G:
+            sci_flags |= SCI_FLAG_DMA_READ;
+            fetch_data = 1;
+            /* intentional fall-through */
+        case BENCH_DMA_PUSH_TO_REMOTE_G:
+            sci_flags |= SCI_FLAG_DMA_GLOBAL;
             dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
             break;
 
@@ -321,7 +367,7 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
         report_buffer_change(stderr, byte, value);
     }
     
-    if (verify_transfer(&tl_desc) != 1)
+    if (verify_transfer(sci_flags, &tl_desc) != 1)
     {
         log_error("Local and remote buffers differ!!");
         result->buffer_matches = 0;

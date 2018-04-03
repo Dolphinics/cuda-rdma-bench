@@ -18,7 +18,9 @@ extern "C" {
 typedef enum {
     BENCH_DO_NOTHING                    = 0x00,     // Dummy benchmark type
     BENCH_DMA_PUSH_TO_REMOTE            = 0x10,     // Use DMA to push data to remote host
+    BENCH_DMA_PUSH_TO_REMOTE_G          = 0x11,     // Use DMA to push data to remote host (global)
     BENCH_DMA_PULL_FROM_REMOTE          = 0x12,     // Use DMA to pull data from remote host
+    BENCH_DMA_PULL_FROM_REMOTE_G        = 0x13,     // Use DMA to pull data from remote host (global)
     BENCH_SCIMEMWRITE_TO_REMOTE         = 0x20,     // Use SCIMemWrite to write data to remote host (PIO)
     BENCH_SCIMEMCPY_TO_REMOTE           = 0x40,     // Use SCIMemCpy to write data to remote host (PIO)
     BENCH_SCIMEMCPY_FROM_REMOTE         = 0x51,     // Use SCIMemCpy to read data from remote host (PIO)
@@ -65,7 +67,7 @@ uint8_t random_byte_value();
  * 
  * This will block until stop_server() is invoked asynchronously (i.e. from an signal handler)
  */
-void server(unsigned adapter_no, int gpu_id, unsigned segment_id, size_t segment_size);
+void server(unsigned adapter_no, int gpu_id, unsigned segment_id, size_t segment_size, int global);
 
 
 /* Stop the benchmarking server */

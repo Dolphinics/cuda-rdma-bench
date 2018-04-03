@@ -9,7 +9,9 @@
 
 static const char* bench_names[] = {
     "dma-push",
+    "global-dma-push",
     "dma-pull",
+    "global-dma-pull",
     "scimemwrite",
     "scimemcpy-write",
     "scimemcpy-read",
@@ -22,7 +24,9 @@ static const char* bench_names[] = {
 
 static const char* bench_descriptions[] = {
     "use DMA to push data to remote host",
+    "use DMA to push data to remote host (global)",
     "use DMA to pull data from remote host",
+    "use DMA to pull data from remote host (global)",
     "use SCIMemWrite to write data to remote host",
     "use SCIMemCpy to write data to remote host",
     "use SCIMemCpy to read data from remote host",
@@ -34,8 +38,10 @@ static const char* bench_descriptions[] = {
 
 
 bench_mode_t all_benchmarking_modes[] = {
-    BENCH_DMA_PUSH_TO_REMOTE,             
+    BENCH_DMA_PUSH_TO_REMOTE,
+    BENCH_DMA_PUSH_TO_REMOTE_G,
     BENCH_DMA_PULL_FROM_REMOTE,           
+    BENCH_DMA_PULL_FROM_REMOTE_G,
     BENCH_SCIMEMWRITE_TO_REMOTE,          
     BENCH_SCIMEMCPY_TO_REMOTE,            
     BENCH_SCIMEMCPY_FROM_REMOTE,          
@@ -148,8 +154,9 @@ uint64_t remote_ioaddr(sci_remote_segment_t segment)
 }
 
 
-sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, const gpu_info_t* gpu, void** buf)
+sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, const gpu_info_t* gpu, void** buf, int gl)
 {
+    unsigned flags = gl ? SCI_FLAG_DMA_GLOBAL : 0;
     sci_error_t err = SCI_ERR_OK, 
                 tmp = SCI_ERR_OK;
 
@@ -160,7 +167,7 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return SCI_ERR_NOSPC;
     }
 
-    SCICreateSegment(sd, segment, id, size, NULL, NULL, SCI_FLAG_EMPTY, &err);
+    SCICreateSegment(sd, segment, id, size, NULL, NULL, flags | SCI_FLAG_EMPTY, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));
@@ -189,17 +196,18 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return err;
     }
 
-    log_debug("GPU segment %u created with IO addr 0x%lu", id, local_ioaddr(*segment));
+    log_debug("GPU segment %u created with IO addr 0x%lu (global=%u)", id, local_ioaddr(*segment), !!gl);
     return SCI_ERR_OK;
 }
 
 
-sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, sci_map_t* map, void** buf)
+sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_local_segment_t* segment, size_t size, sci_map_t* map, void** buf, int gl)
 {
+    unsigned flags = gl ? SCI_FLAG_DMA_GLOBAL : 0;
     sci_error_t err, tmp;
     err = tmp = SCI_ERR_OK;
 
-    SCICreateSegment(sd, segment, id, size, NULL, NULL, 0, &err);
+    SCICreateSegment(sd, segment, id, size, NULL, NULL, flags, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to create segment: %s", SCIGetErrorString(err));
@@ -223,7 +231,7 @@ sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return err;
     }
 
-    log_debug("RAM segment %u created with IO addr 0x%lu", id, local_ioaddr(*segment));
+    log_debug("RAM segment %u created with IO addr 0x%lu (global=%u)", id, local_ioaddr(*segment), !!gl);
     return SCI_ERR_OK;
 }
 

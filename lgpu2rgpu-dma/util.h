@@ -37,11 +37,11 @@ uint64_t remote_ioaddr(sci_remote_segment_t segment);
 
 
 /* Create a local segment and attach it to GPU memory */
-sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter_no, unsigned segment_id, sci_local_segment_t* segment, size_t segment_size, const gpu_info_t* gpu_info, void** gpu_buf);
+sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter_no, unsigned segment_id, sci_local_segment_t* segment, size_t segment_size, const gpu_info_t* gpu_info, void** gpu_buf, int global);
 
 
 /* Create a local segment and map it RAM memory */
-sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter_no, unsigned segment_id, sci_local_segment_t* segment, size_t segment_size, sci_map_t* map, void** ram_buf);
+sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter_no, unsigned segment_id, sci_local_segment_t* segment, size_t segment_size, sci_map_t* map, void** ram_buf, int global);
 
 
 /* Release local segment attached to GPU memory */
