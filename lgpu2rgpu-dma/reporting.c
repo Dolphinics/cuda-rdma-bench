@@ -217,5 +217,5 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
 
     megabytes_per_sec = total_size / result->total_runtime;
     fprintf(fp, "avg %7.2f %-3s %7lu µs %11.3f %-5s\n",
-            total_size / (iec ? 1<<20 : 1e6), mb_unit, result->total_runtime, megabytes_per_sec, bw_unit);
+            total_size / (iec ? 1<<10 : 1e3), mb_unit, result->total_runtime, megabytes_per_sec, bw_unit);
 }
