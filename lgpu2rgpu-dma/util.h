@@ -12,10 +12,6 @@ extern "C" {
 extern bench_mode_t all_benchmarking_modes[];
 
 
-/* Translate a SISCI error code into a human readable format */
-const char* SCIGetErrorString(sci_error_t error);
-
-
 /* Get a benchmark operation mode from its name */
 bench_mode_t bench_mode_from_name(const char* name);
 
