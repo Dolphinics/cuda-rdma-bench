@@ -134,18 +134,18 @@ void report_summary(FILE* fp, const bench_t* test, const result_t* result, int i
     fprintf(fp, "benchmark type: %s\n", bench_mode_name(test->benchmark_mode));
     fprintf(fp, "overall status: %4s\n", result->success_count == test->num_runs && result->buffer_matches ? "pass" : "fail");
     fprintf(fp, "buffers match : %-3s\n", result->buffer_matches ? "yes" : "no");
-    fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB");
+    fprintf(fp, "segment size  : %.3lf %-3s\n", (double) td.segment_size / (iec ? 1<<10 : 1e3), iec ? "KiB" : "kB");
     fprintf(fp, "repetitions   : %lu\n", test->num_runs);
     fprintf(fp, "success runs  : %lu\n", result->success_count);
 
-    fprintf(fp, "transfer size : %.3f %-3s x %lu\n", (double) result->total_size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB", test->num_runs);
+    fprintf(fp, "transfer size : %.3f %-3s x %lu\n", (double) result->total_size / (iec ? 1<<10 : 1e3), iec ? "KiB" : "kB", test->num_runs);
 
     size_t ts = translist_size(test->transfer_list);
     translist_entry_t te;
     translist_element(test->transfer_list, 0, &te);
 
     fprintf(fp, "transfer units: %lu x %.3f %s\n",
-            ts, te.size / (iec ? 1<<20 : 1e6), iec ? "MiB" : "MB" );
+            ts, te.size / (iec ? 1<<10 : 1e3), iec ? "KiB" : "kB" );
     
     if (td.local_gpu_info != NULL)
     {
@@ -181,7 +181,7 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
     fprintf(fp, "===============   BANDWIDTH   ===============\n");
 
     const char* bw_unit = iec ? "MiB/s" : "MB/s";
-    const char* mb_unit = iec ? "MiB" : "MB";
+    const char* mb_unit = iec ? "KiB" : "kB";
     
     double megabytes_per_sec;
     
@@ -204,7 +204,7 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
             megabytes_per_sec = (double) size / (double) result->runtimes[i];
 
             fprintf(fp, "%3lu %7.2f %-3s %7lu µs %11.3f %-5s\n", 
-                    i + 1, (double) size / (iec ? 1<<20 : 1e6), mb_unit, result->runtimes[i], megabytes_per_sec, bw_unit);
+                    i + 1, (double) size / (iec ? 1<<10 : 1e3), mb_unit, result->runtimes[i], megabytes_per_sec, bw_unit);
         }
         else
         {

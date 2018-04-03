@@ -93,7 +93,7 @@ static void list_gpu_devices(size_t size_factor)
         fprintf(stderr, " %4s", rdma ? "yes" : "no");
 
         fprintf(stderr, "   %9.02f %-3s", prop.totalGlobalMem / (double) size_factor, 
-                size_factor == 1e6 ? "MB" : "MiB");
+                size_factor == 1e3 ? "kB" : "KiB");
 
         fprintf(stderr, "\n");
     }
@@ -138,7 +138,7 @@ static void give_usage(const char* progname)
             "    Benchmark how long it takes to transfer memory between a local and a\n"
             "    remote segment across an NTB link.\n"
             "\nServer mode arguments\n"
-            "  --size=<size>            memory size in MB (or MiB if --iec is set)\n"
+            "  --size=<size>            memory size in kB (or KiB if --iec is set)\n"
             "\nClient mode arguments\n"
             "  --type=<bencmark type>   specify benchmark type\n"
             "  --remote-node=<node id>  remote node identifier\n"
@@ -169,7 +169,7 @@ int main(int argc, char** argv)
     int local_gpu_id = NO_GPU;
 
     size_t local_segment_count = 0;
-    size_t local_segment_factor = 1e6;
+    size_t local_segment_factor = 1e3;
 
     size_t vec_div = 1;
     size_t vec_len = 1;
@@ -254,7 +254,7 @@ int main(int argc, char** argv)
                 local_segment_count = strtoul(optarg, &str, 0);
                 if (str == NULL || *str != '\0' || local_segment_count == 0)
                 {
-                    log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e6 ? "MB" : "MiB");
+                    log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e3 ? "kB" : "KiB");
                     exit('s');
                 }
                 break;
@@ -294,7 +294,7 @@ int main(int argc, char** argv)
 
             case 'i': // use IEC units instead of SI
                 log_debug("Using IEC units");
-                local_segment_factor = 1 << 20;
+                local_segment_factor = 1 << 10;
                 break;
 
             case 'V': // set DMA vector element length
@@ -370,7 +370,7 @@ int main(int argc, char** argv)
     /* Run as client or server */
     if (remote_node_id == NO_NODE)
     {
-        log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e6 ? "MB" : "MiB");
+        log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e3 ? "kB" : "KiB");
 
         if (mode != BENCH_DO_NOTHING)
         {
@@ -441,7 +441,7 @@ int main(int argc, char** argv)
 
         translist_desc_t tsd = translist_desc(ts);
         size_t segment_size = tsd.segment_size;
-        log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e6 ? "MB" : "MiB");
+        log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e3 ? "kB" : "KiB");
 
         if (vec_div >= segment_size || segment_size / vec_div == 0)
         {
@@ -485,9 +485,9 @@ int main(int argc, char** argv)
         if (client(local_adapter, &bench_conf, result) == 0)
         {
             log_info("Total runtime is %.2f s", result->total_runtime / 1e6l);
-            log_info("Avg bandwidth is %.2f %-5s", (double) (result->total_size * repeat_count) / (double) result->total_runtime, local_segment_factor == 1e6 ? "MB/s" : "MiB/s");
-            report_summary(stdout, &bench_conf, result, local_segment_factor != 1e6);
-            report_bandwidth(stdout, &bench_conf, result, local_segment_factor != 1e6);
+            log_info("Avg bandwidth is %.2f %-5s", (double) (result->total_size * repeat_count) / (double) result->total_runtime, local_segment_factor == 1e3 ? "MB/s" : "MiB/s");
+            report_summary(stdout, &bench_conf, result, local_segment_factor != 1e3);
+            report_bandwidth(stdout, &bench_conf, result, local_segment_factor != 1e3);
         }
         else
         {
