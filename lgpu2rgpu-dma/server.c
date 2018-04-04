@@ -184,7 +184,7 @@ void server(unsigned adapter, int gpu, unsigned id, size_t size, int global)
         SCIClose(sd, 0, &err);
         return;
     }
-    memset(local_gpu, sizeof(gpu_info_t), 0xff);
+    memset(local_gpu, 0xff, sizeof(gpu_info_t));
     local_gpu->id = NO_GPU;
 
     // Get local GPU information
