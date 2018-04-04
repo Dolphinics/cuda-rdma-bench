@@ -17,8 +17,7 @@ static int verify_transfer(unsigned flags, translist_desc_t* desc)
 
     if (!!(flags & SCI_FLAG_DMA_GLOBAL))
     {
-        log_debug("Global DMA can not be verified");
-        return 1;
+        log_warn("Trying to compare global DMA transfer");
     }
 
     volatile void* remote_ptr;
@@ -367,15 +366,19 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
         report_buffer_change(stderr, byte, value);
     }
     
-    if (verify_transfer(sci_flags, &tl_desc) != 1)
+    int verified = verify_transfer(sci_flags, &tl_desc);
+    result->buffer_matches = !!verified;
+    if (verified == 1)
     {
-        log_error("Local and remote buffers differ!!");
-        result->buffer_matches = 0;
+        log_debug("Local and remote buffers are equal");
+    }
+    else if (verified == 0)
+    {
+        log_warn("Local and remote buffers differ!");
     }
     else
     {
-        log_debug("Local and remote buffers are equal");
-        result->buffer_matches = 1;
+        log_error("Local and remote buffers could not be compared!");
     }
 
     return 0;

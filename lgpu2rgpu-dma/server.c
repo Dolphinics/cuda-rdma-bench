@@ -10,6 +10,12 @@
 #include "gpu.h"
 #include "ram.h"
 
+#ifdef __GNUC__
+#define UNUSED(x) x __attribute__((unused))
+#else
+#define UNUSED(x) x
+#endif
+
 
 /* Buffer info */
 typedef struct {
@@ -37,7 +43,7 @@ void stop_server()
 }
 
 
-static sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t irq, sci_error_t status)
+static sci_callback_action_t validate_buffer(void* buf_info, sci_local_interrupt_t UNUSED(irq), sci_error_t status)
 {
     if (status == SCI_ERR_OK)
     {
