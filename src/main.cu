@@ -12,17 +12,39 @@
 #include "util.h"
 #include "bench.h"
 
+#define DEFAULT_LOCAL_SEGMENT_COUNT 4
+
 
 /* Program options */
 static struct option options[] = {
     { .name = "adapter", .has_arg = 1, .flag = NULL, .val = 'a' },
+    { .name = "adapt", .has_arg = 1, .flag = NULL, .val = 'a' },
     { .name = "remote-node", .has_arg = 1, .flag = NULL, .val = 'n' },
+    { .name = "remote-node-id", .has_arg = 1, .flag = NULL, .val = 'n' },
+    { .name = "rni", .has_arg = 1, .flag = NULL, .val = 'n' },
+    { .name = "rn", .has_arg = 1, .flag = NULL, .val = 'n' },
+    { .name = "rnode", .has_arg = 1, .flag = NULL, .val = 'n' },
     { .name = "local-id", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "local-segment", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "local-segment-id", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "lsi", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "ls", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "lseg", .has_arg = 1, .flag = NULL, .val = 'l' },
+    { .name = "remote-segment-id", .has_arg = 1, .flag = NULL, .val = 'r' },
+    { .name = "remote-segment", .has_arg = 1, .flag = NULL, .val = 'r' },
     { .name = "remote-id", .has_arg = 1, .flag = NULL, .val = 'r' },
+    { .name = "rsi", .has_arg = 1, .flag = NULL, .val = 'r' },
+    { .name = "rs", .has_arg = 1, .flag = NULL, .val = 'r' },
+    { .name = "rseg", .has_arg = 1, .flag = NULL, .val = 'r' },
     { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
+    { .name = "sz", .has_arg = 1, .flag = NULL, .val = 's' },
     { .name = "global", .has_arg = 0, .flag = NULL, .val = 1 },
     { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 'g' },
+    { .name = "cuda-device", .has_arg = 1, .flag = NULL, .val = 'g' },
+    { .name = "cuda-dev", .has_arg = 1, .flag = NULL, .val = 'g' },
+    { .name = "dev", .has_arg = 1, .flag = NULL, .val = 'g' },
     { .name = "type", .has_arg = 1, .flag = NULL, .val = 't' },
+    { .name = "mode", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "bench", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "benchmark", .has_arg = 1, .flag = NULL, .val = 't' },
     { .name = "test", .has_arg = 1, .flag = NULL, .val = 't' },
@@ -133,30 +155,30 @@ static unsigned get_local_node_id(unsigned adapter_no)
 static void give_usage(const char* progname)
 {
     fprintf(stderr,
-            "Usage: %s --size=<size>\n"
-            "   or: %s --type=<benchmark type> --remote-node=<node id>\n"
+            "Usage: %s [--size=<size>]\n"
+            "   or: %s --rn=<remote node id> [--bench=<benchmark type>] [--size=<size>]\n"
             "\nDescription\n"
             "    Benchmark how long it takes to transfer memory between a local and a\n"
             "    remote segment across an NTB link.\n"
-            "\nServer mode arguments\n"
-            "  --size=<size>            memory size in kB (or KiB if --iec is set)\n"
             "\nClient mode arguments\n"
-            "  --type=<bencmark type>   specify benchmark type\n"
-            "  --remote-node=<node id>  remote node identifier\n"
-            "  --remote-id=<segment id> number identifying the remote segment\n"
+            "  --bench=<bencmark type>  specify benchmark type, default is dma-push\n"
+            "  --rn=<node id>           remote node identifier\n"
+            "  --rseg=<segment id>      number identifying the remote segment\n"
             "  --count=<number>         number of times to repeat test (defaults to 1)\n"
             "\nDMA vector options (client mode)\n"
             "  --vec=<number>           divide segment into a number of DMA vector elements (defaults to 1)\n"
             "  --len=<number>           repeat the entire vector a number of times (defaults to 1)\n"
             "\nOptional arguments (both client and server mode)\n"
+            "  --size=<size>            memory size in KiB (or kB if --si is set), default is %u KiB\n"
             "  --global                 create local segment with SCI_FLAG_DMA_GLOBAL\n"
             "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
-            "  --local-id=<segment id>  number identifying the local segment\n"
+            "  --lseg=<segment id>      number identifying the local segment\n"
             "  --gpu=<gpu id>           specify a local GPU (if not given, buffer is allocated in RAM)\n"
             "  --verbose                increase verbosity level\n"
             "  --si                     use SI units (1000s) instead of IEC units (1024s)\n"
             "  --help                   show list of local GPUs and benchmark types\n"
-            , progname, progname);
+            "\n"
+            , progname, progname, DEFAULT_LOCAL_SEGMENT_COUNT);
 }
 
 
@@ -170,23 +192,16 @@ int main(int argc, char** argv)
     unsigned remote_segment_id = NO_ID;
     int local_gpu_id = NO_GPU;
 
-    size_t local_segment_count = 0;
+    size_t local_segment_count = DEFAULT_LOCAL_SEGMENT_COUNT;
     size_t local_segment_factor = 1 << 10;
 
     size_t vec_div = 1;
     size_t vec_len = 1;
 
     size_t repeat_count = 1;
-    bench_mode_t mode = BENCH_DO_NOTHING;
+    bench_mode_t mode = BENCH_DMA_PUSH_TO_REMOTE;
 
     int global = 0;
-
-    /* Do shortcut */
-    if (argc < 2)
-    {
-        give_usage(argv[0]);
-        exit(1);
-    }
 
     /* Parse program arguments */
     int opt, idx;
@@ -235,7 +250,7 @@ int main(int argc, char** argv)
 
             case 'l': // set local segment ID
                 str = NULL;
-                local_segment_id = strtoul(optarg, &str, 0);
+                local_segment_id = strtoul(optarg, &str, 16);
                 if (str == NULL || *str != '\0')
                 {
                     log_error("Argument --local-id must be a valid segment identifier");
@@ -245,7 +260,7 @@ int main(int argc, char** argv)
 
             case 'r': // set remote segment ID
                 str = NULL;
-                remote_segment_id = strtoul(optarg, &str, 0);
+                remote_segment_id = strtoul(optarg, &str, 16);
                 if (str == NULL || *str != '\0')
                 {
                     log_error("Argument --remote-id must be a valid segment identifier");
@@ -256,10 +271,15 @@ int main(int argc, char** argv)
             case 's': // set segment size
                 str = NULL;
                 local_segment_count = strtoul(optarg, &str, 0);
-                if (str == NULL || *str != '\0' || local_segment_count == 0)
+                if (str == NULL || *str != '\0')
                 {
                     log_error("Argument --size must be a valid segment size in %s", local_segment_factor == 1e3 ? "kB" : "KiB");
                     exit('s');
+                }
+                else if (local_segment_count == 0)
+                {
+                    local_segment_count = DEFAULT_LOCAL_SEGMENT_COUNT;
+                    log_debug("Setting size to %u %s", local_segment_count, local_segment_factor == 1e3 ? "kB" : "KiB");
                 }
                 break;
 
@@ -380,7 +400,7 @@ int main(int argc, char** argv)
     {
         log_info("Segment size is set to %lu %s", local_segment_count, local_segment_factor == 1e3 ? "kB" : "KiB");
 
-        if (mode != BENCH_DO_NOTHING)
+        if (mode != BENCH_DO_NOTHING && mode != BENCH_DMA_PUSH_TO_REMOTE)
         {
             log_warn("Setting benchmark type has no effect in server mode");
         }
@@ -397,30 +417,23 @@ int main(int argc, char** argv)
 
         if (local_segment_id == NO_ID)
         {
-            log_warn("No local segment ID specified, using node ID...");
+            log_info("No local segment ID specified, using local node ID...");
             local_segment_id = local_node_id;
         }
-        log_info("Connect to node %u with segment ID %u", local_node_id, local_segment_id);
+        log_info("Connect to node %u with segment ID %x", local_node_id, local_segment_id);
 
-        signal(SIGINT, (sig_t) &stop_server);
-        signal(SIGTERM, (sig_t) &stop_server);
         server(local_adapter, local_gpu_id, local_segment_id, local_segment_count * local_segment_factor, global);
     }
     else
     {
-        if (local_segment_count != 0)
-        {
-            log_warn("Setting segment size has no effect in client mode");
-        }
-
         if (local_segment_id == NO_ID)
         {
-            log_warn("No local segment ID specified, using node ID...");
+            log_info("No local segment ID specified, using local node ID...");
             local_segment_id = local_node_id;
         }
         if (remote_segment_id == NO_ID)
         {
-            log_warn("No remote segment ID specified using node ID...");
+            log_info("No remote segment ID specified using remote node ID...");
             remote_segment_id = remote_node_id;
         }
 
@@ -440,7 +453,7 @@ int main(int argc, char** argv)
         log_info("Initializing transfer list...");
 
         translist_t ts;
-        if (translist_create(&ts, local_adapter, local_segment_id, remote_node_id, remote_segment_id, local_gpu_id, global) != 0)
+        if (translist_create(&ts, local_adapter, local_segment_id, local_segment_count * local_segment_factor, remote_node_id, remote_segment_id, local_gpu_id, global) != 0)
         {
             log_error("Unexpected error when creating transfer list, aborting...");
             SCITerminate();
@@ -449,7 +462,7 @@ int main(int argc, char** argv)
 
         translist_desc_t tsd = translist_desc(ts);
         size_t segment_size = tsd.segment_size;
-        log_info("Remote segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e3 ? "kB" : "KiB");
+        log_info("Transfer segment size %.2f %s", segment_size / (double) local_segment_factor, local_segment_factor == 1e3 ? "kB" : "KiB");
 
         if (vec_div >= segment_size || segment_size / vec_div == 0)
         {

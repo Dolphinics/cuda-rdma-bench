@@ -17,7 +17,6 @@ static const char* bench_names[] = {
     "scimemcpy-read",
     "write",
     "read",
-    "data-interrupt",
     NULL
 };
 
@@ -32,7 +31,6 @@ static const char* bench_descriptions[] = {
     "use SCIMemCpy to read data from remote host",
     "use glibc memcpy / cudaMemcpy to write data to remote host",
     "use glibc memcpy / cudaMemcpy to read data from remote host",
-    "use data interrupts to send data to remote host",
     NULL
 };
 
@@ -47,7 +45,6 @@ bench_mode_t all_benchmarking_modes[] = {
     BENCH_SCIMEMCPY_FROM_REMOTE,          
     BENCH_WRITE_TO_REMOTE,                
     BENCH_READ_FROM_REMOTE,               
-    BENCH_DATA_INTERRUPT,
     BENCH_DO_NOTHING
 };
 
@@ -196,7 +193,8 @@ sci_error_t make_gpu_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return err;
     }
 
-    log_debug("GPU segment %u created with IO addr 0x%lu (global=%u)", id, local_ioaddr(*segment), !!gl);
+    log_debug("GPU segment %x created with IO addr 0x%lx (size=%zu, global=%u)", 
+            id, local_ioaddr(*segment), size, !!gl);
     return SCI_ERR_OK;
 }
 
@@ -231,7 +229,8 @@ sci_error_t make_ram_segment(sci_desc_t sd, unsigned adapter, unsigned id, sci_l
         return err;
     }
 
-    log_debug("RAM segment %u created with IO addr 0x%lu (global=%u)", id, local_ioaddr(*segment), !!gl);
+    log_debug("RAM segment %x created with IO addr 0x%lx (size=%zu, global=%u)", 
+            id, local_ioaddr(*segment), size, !!gl);
     return SCI_ERR_OK;
 }
 

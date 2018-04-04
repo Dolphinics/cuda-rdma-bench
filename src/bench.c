@@ -17,7 +17,15 @@ uint64_t ts_usecs()
 
 uint8_t random_byte_value()
 {
+    uint8_t byte = 0;
     srand(ts_usecs());
-    return (rand() & 0xff) + 1; // should never be 0x00
+
+    do
+    {
+        byte = rand() & 0xff;
+    }
+    while (byte == 0x00 || byte == 0xff);
+
+    return byte;
 }
 

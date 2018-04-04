@@ -1,11 +1,13 @@
-PROJECT := $(notdir $(shell pwd))
-OBJECTS	:= main.o translist.o reporting.o util.o gpu.o ram.o bench.o client.o server.o
+PROJECT := rdma-bench
+SOURCES := $(wildcard src/*.c) $(wildcard src/*.cu)
+OBJECTS	:= $(SOURCES:%=%.o) 
+CUDA_DIR := /usr/local/cuda
 
-CC	:= gcc
-NVCC 	:= /usr/local/cuda/bin/nvcc
-CFLAGS	:= -Wall -Wextra -D_REENTRANT -g
+CC      := gcc
+NVCC    := $(CUDA_DIR)/bin/nvcc
+CFLAGS  := -Wall -Wextra -D_REENTRANT -g
 
-INCLUDE	:= /usr/local/cuda/include /opt/DIS/include /opt/DIS/include/dis
+INCLUDE	:= $(CUDA_DIR)/include /opt/DIS/include /opt/DIS/include/dis
 
 .PHONY: all clean $(PROJECT)
 
@@ -17,8 +19,8 @@ clean:
 $(PROJECT): $(OBJECTS)
 	$(NVCC) -o $@ $^ -L/opt/DIS/lib64 -lsisci -lcuda -lrt -lpthread
 
-%.o: %.c
+src/%.c.o: src/%.c
 	$(CC) -x c -std=gnu99 $(CFLAGS) $(addprefix -I,$(INCLUDE)) -o $@ $< -c 
 
-%.o: %.cu
+src/%.cu.o: src/%.cu
 	$(NVCC) -x cu -Xcompiler "$(CFLAGS)" $(addprefix -I,$(INCLUDE)) -o $@ $< -c 

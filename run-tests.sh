@@ -1,6 +1,6 @@
 #!/bin/bash
 
-bin=lgpu2rgpu-dma
+bin=rdma-bench
 max_log_lines=50
 filename=$1
 remote_host=$2

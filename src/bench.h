@@ -26,7 +26,6 @@ typedef enum {
     BENCH_SCIMEMCPY_FROM_REMOTE         = 0x51,     // Use SCIMemCpy to read data from remote host (PIO)
     BENCH_WRITE_TO_REMOTE               = 0x80,     // Use regular memcpy to write data to remote host (PIO)
     BENCH_READ_FROM_REMOTE              = 0x81,     // Use regular memcpy to read data from remote host (PIO)
-    BENCH_DATA_INTERRUPT                = 0xff      // Use data interrupts to send data to a remote host
 } bench_mode_t;
 // FIXME: Global DMA requires CreateSegment to be called with SCI_FLAG_DMA_GLOBAL
 

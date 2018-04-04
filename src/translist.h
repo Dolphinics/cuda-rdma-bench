@@ -37,6 +37,7 @@ typedef struct {
     size_t                      segment_size;       // size of the segment
     sci_remote_data_interrupt_t interrupt;          // data interrupt
     sci_remote_interrupt_t      validate;           // remote validation interrupt
+    int                         global;             // remote buffer is global
     void*                       buffer_ptr;         // pointer to the local buffer
     const gpu_info_t*           local_gpu_info;     // local GPU description
     const gpu_info_t*           remote_gpu_info;    // remote GPU description
@@ -48,13 +49,14 @@ typedef struct {
  * handle           - handle reference
  * local_adapter    - local Dolphin NTB adapter number
  * local_segment    - local SISCI segment ID
+ * lseg_size        - size of local segment (0 = use remote segment size)
  * remote_node      - remote Dolphin cluster node
  * remote_segment   - remote SISCI segment ID
  * gpu_id           - local CUDA device ID (or NO_GPU)
  *
  * Returns 0 on success or a negative value on error
  */
-int translist_create(translist_t* handle, unsigned local_adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu_id, int global);
+int translist_create(translist_t* handle, unsigned local_adapter, unsigned local_segment, size_t lseg_size, unsigned remote_node, unsigned remote_segment, int gpu_id, int global);
 
 
 /* Get transfer list descriptor

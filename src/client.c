@@ -10,14 +10,14 @@
 #include "ram.h"
 
 
-static int verify_transfer(unsigned flags, translist_desc_t* desc)
+static int verify_transfer(translist_desc_t* desc)
 {
     sci_error_t err;
     sci_map_t remote_buf_map;
 
-    if (!!(flags & SCI_FLAG_DMA_GLOBAL))
+    if (desc->global)
     {
-        log_warn("Trying to compare global DMA transfer");
+        log_warn("Attempting to map remote global buffer");
     }
 
     volatile void* remote_ptr;
@@ -96,6 +96,11 @@ void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, re
     sci_error_t err;
     sci_map_t remote_buf_map;
     volatile void* remote_buffer_ptr;
+
+    if (td->global)
+    {
+        log_warn("Attempting to map remote global buffer");
+    }
 
     // Map remote segment
     remote_buffer_ptr = SCIMapRemoteSegment(td->segment_remote, &remote_buf_map, 0, td->segment_size, NULL, 0, &err);
@@ -203,6 +208,11 @@ void dma(unsigned adapter, translist_t tl, translist_desc_t* tsd, unsigned flags
     // Map remote segment if not global DMA
     if (!(flags & SCI_FLAG_DMA_GLOBAL))
     {
+        if (tsd->global)
+        {
+            log_warn("Attempting to map remote global buffer");
+        }
+
         SCIMapRemoteSegment(tsd->segment_remote, &remote_map, 0, tsd->segment_size, NULL, 0, &err);
         if (err != SCI_ERR_OK)
         {
@@ -366,7 +376,7 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
         report_buffer_change(stderr, byte, value);
     }
     
-    int verified = verify_transfer(sci_flags, &tl_desc);
+    int verified = verify_transfer(&tl_desc);
     result->buffer_matches = !!verified;
     if (verified == 1)
     {

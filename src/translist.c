@@ -20,7 +20,10 @@ struct transfer_list
     unsigned int            remote_node_id;
     unsigned int            remote_segment_id;
     sci_remote_segment_t    remote_segment;
+    size_t                  remote_segment_size;
+    int                     remote_segment_global;
     size_t                  segment_size;
+    unsigned int            validate_irq_no;
     sci_remote_interrupt_t  validate_irq;
     int                     local_gpu_id;
     int                     remote_gpu_id;
@@ -33,33 +36,52 @@ struct transfer_list
 };
 
 
-static void load_remote_buf_info(translist_t list)
+static sci_error_t load_remote_info(unsigned adapter, unsigned node, unsigned id, translist_t list)
 {
     sci_error_t err = SCI_ERR_OK;
+    sci_error_t status = SCI_ERR_OK;
+    sci_desc_t sd;
     sci_remote_segment_t segment;
     sci_map_t map;
-    volatile gpu_info_t* gi;
+    volatile conn_info_t* ci;
 
-    unsigned id = (('G' ^ 'P' ^ 'U') << ID_MASK_BITS) | list->remote_segment_id;
-
-    log_debug("Retrieving remote buffer info...");
-    SCIConnectSegment(list->sd, &segment, list->remote_node_id, id, list->local_adapter_no, NULL, NULL, 2000, 0, &err);
+    SCIOpen(&sd, 0, &err);
     if (err != SCI_ERR_OK)
     {
-        log_warn("Failed to retrieve remote buffer info");
-        return;
+        log_error("Failed to open descriptor: %s", SCIGetErrorString(err));
+        return err;
     }
 
-    gi = (volatile gpu_info_t*) SCIMapRemoteSegment(segment, &map, 0, sizeof(gpu_info_t), NULL, SCI_FLAG_READONLY_MAP, &err);
+    log_debug("Retrieving remote buffer info %x on node %u...", node, id);
+    do
+    {
+        SCIConnectSegment(sd, &segment, node, id & ID_MASK, adapter, NULL, NULL, TRANSLIST_TIMEOUT_MS, 0, &err);
+    }
+    while (err == SCI_ERR_TIMEOUT || err == SCI_ERR_NO_SUCH_SEGMENT);
+
     if (err != SCI_ERR_OK)
     {
         log_warn("Failed to retrieve remote buffer info");
+        status = err;
+        goto close;
+    }
+
+    ci = (volatile conn_info_t*) SCIMapRemoteSegment(segment, &map, 0, sizeof(conn_info_t), NULL, SCI_FLAG_READONLY_MAP, &err);
+    if (err != SCI_ERR_OK)
+    {
+        log_warn("Failed to retrieve remote buffer info");
+        status = err;
         goto disconnect;
     }
 
-    list->remote_gpu_info = *gi;
-    list->remote_gpu_id = gi->id;
-    
+    list->remote_node_id = ci->node_id;
+    list->remote_segment_id = ci->segment_id;
+    list->remote_segment_size = ci->size;
+    list->remote_segment_global = ci->global;
+    list->remote_gpu_id = ci->gpu;
+    list->remote_gpu_info = ci->gpu_info;
+    list->validate_irq_no = ci->intr_no;
+
     if (list->remote_gpu_id != NO_GPU)
     {
         log_info("Remote buffer is GPU memory");
@@ -77,10 +99,15 @@ disconnect:
         SCIDisconnectSegment(segment, 0, &err);
     }
     while (err == SCI_ERR_BUSY);
+
+close:
+    SCIClose(sd, 0, &err);
+
+    return status;
 }
 
 
-static int connect_remote_segment(translist_t list)
+static sci_error_t connect_remote_segment(translist_t list)
 {
     sci_error_t err = SCI_ERR_OK;
 
@@ -88,27 +115,55 @@ static int connect_remote_segment(translist_t list)
     unsigned remote_node = list->remote_node_id;
     unsigned adapter = list->local_adapter_no;
 
-    load_remote_buf_info(list);
-
-    log_debug("Trying to connect to remote segment %u on node %u", remote_segment, remote_node);
+    log_debug("Trying to connect to remote segment %x on node %u", remote_segment, remote_node);
     do
     {
-        SCIConnectSegment(list->sd, &list->remote_segment, remote_node, remote_segment & ID_MASK, adapter, NULL, NULL, TRANSLIST_TIMEOUT_MS, 0, &err);
+        SCIConnectSegment(list->sd, &list->remote_segment, remote_node, remote_segment, adapter, NULL, NULL, TRANSLIST_TIMEOUT_MS, 0, &err);
     }
     while (err == SCI_ERR_TIMEOUT || err == SCI_ERR_NO_SUCH_SEGMENT);
 
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to connect to remote segment: %s", SCIGetErrorString(err));
-        return 1;
+        return err;
     }
-    log_info("Connected to remote segment %u on node %u", remote_segment, remote_node);
+    log_info("Connected to remote segment %x on node %u", remote_segment, remote_node);
+    log_debug("Remote segment %x on node %u has size %zu", 
+            remote_segment, remote_node, SCIGetRemoteSegmentSize(list->remote_segment));
 
-    return 0;
+    return SCI_ERR_OK;
 }
 
 
-int translist_create(translist_t* handle, unsigned adapter, unsigned local_segment, unsigned remote_node, unsigned remote_segment, int gpu, int gl)
+static sci_error_t connect_remote_irq(translist_t list)
+{
+    sci_error_t err = SCI_ERR_OK;
+
+    unsigned remote_node = list->remote_node_id;
+    unsigned remote_irq_no = list->validate_irq_no;
+    unsigned adapter = list->local_adapter_no;
+
+    log_debug("Trying to connect to remote interrupt %u on node %u", remote_irq_no, remote_node);
+    do
+    {
+        SCIConnectInterrupt(list->sd, &list->validate_irq, remote_node, adapter, remote_irq_no, TRANSLIST_TIMEOUT_MS, 0, &err);
+    }
+    while (err == SCI_ERR_TIMEOUT || /*err == SCI_ERR_NO_SUCH_INTNO ||*/ err == SCI_ERR_NO_SUCH_SEGMENT); // FIXME: This is a bug in the SISCI API
+
+    if (err != SCI_ERR_OK)
+    {
+        log_error("Failed to connect to remote interrupt: %s", SCIGetErrorString(err));
+        return err;
+    }
+
+    return SCI_ERR_OK;
+}
+
+
+
+
+
+int translist_create(translist_t* handle, unsigned adapter, unsigned local_segment, size_t lsize, unsigned remote_node, unsigned remote_segment, int gpu, int gl)
 {
     sci_error_t err = SCI_ERR_OK;
     translist_t list;
@@ -130,6 +185,12 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
         goto error_free;
     }
 
+    err = load_remote_info(adapter, remote_node, remote_segment, list);
+    if (err != SCI_ERR_OK)
+    {
+        goto error_free;
+    }
+
     // Open SISCI API descriptor and extract local cluster node ID
     SCIOpen(&list->sd, 0, &err);
     if (err != SCI_ERR_OK)
@@ -139,7 +200,7 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
     }
 
     list->local_adapter_no = adapter;
-    list->local_segment_id = local_segment & ID_MASK;
+    list->local_segment_id = local_segment;
     
     SCIGetLocalNodeId(adapter, &list->local_node_id, 0, &err);
     if (err != SCI_ERR_OK)
@@ -150,31 +211,30 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
     log_debug("Local node ID: %u", list->local_node_id);
 
     // Try to connect to remote segment
-    list->remote_node_id = remote_node;
-    list->remote_segment_id = remote_segment & ID_MASK;
-
-    log_debug("Trying to connect to remote interrupt on node %u", remote_node);
-    do
-    {
-        SCIConnectInterrupt(list->sd, &list->validate_irq, remote_node, adapter, remote_segment, TRANSLIST_TIMEOUT_MS, 0, &err);
-    }
-    while (err == SCI_ERR_TIMEOUT || /*err == SCI_ERR_NO_SUCH_INTNO ||*/ err == SCI_ERR_NO_SUCH_SEGMENT); // FIXME: This is a bug in the SISCI API
-
+    err = connect_remote_irq(list);
     if (err != SCI_ERR_OK)
     {
-        log_error("Failed to connect to remote interrupt: %s", SCIGetErrorString(err));
         goto error_close;
     }
-
-    if (connect_remote_segment(list) != 0)
+    
+    err = connect_remote_segment(list);
+    if (err != SCI_ERR_OK)
     {
-        log_error("Failed to connect to remote segment");
-        goto error_close;
+        goto error_disconnect_irq;
+    }
+
+    // Figure out transfer list size
+    if (lsize == 0 || list->remote_segment_size < lsize)
+    {
+        log_warn("Transfer segment size exceeds remote segment size, using remote segment size");
+        list->segment_size = list->remote_segment_size;
+    }
+    else
+    {
+        list->segment_size = lsize;
     }
 
     // Create local buffer and segment
-    list->segment_size = SCIGetRemoteSegmentSize(list->remote_segment);
-
     if (gpu != NO_GPU)
     {
         err = make_gpu_segment(list->sd, adapter, local_segment, &list->local_segment, list->segment_size, &list->local_gpu_info, &list->local_buf_ptr, gl);
@@ -187,7 +247,7 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
     if (err != SCI_ERR_OK)
     {
         log_error("Unexpected error when creating local segment");
-        goto error_disconnect;
+        goto error_disconnect_segment;
     }
 
     // Initialise transfer entry list
@@ -196,9 +256,10 @@ int translist_create(translist_t* handle, unsigned adapter, unsigned local_segme
 
     return 0;
 
-error_disconnect:
-    SCIDisconnectInterrupt(list->validate_irq, 0, &err);
+error_disconnect_segment:
     SCIDisconnectSegment(list->remote_segment, 0, &err);
+error_disconnect_irq:
+    SCIDisconnectInterrupt(list->validate_irq, 0, &err);
 error_close:
     SCIClose(list->sd, 0, &err);
 error_free:
@@ -257,6 +318,7 @@ translist_desc_t translist_desc(translist_t handle)
     info.segment_remote = handle->remote_segment;
     info.segment_size = handle->segment_size;
     info.validate = handle->validate_irq;
+    info.global = handle->remote_segment_global;
     info.buffer_ptr = handle->local_buf_ptr;
     info.local_gpu_info = info.remote_gpu_info = NULL;
 
