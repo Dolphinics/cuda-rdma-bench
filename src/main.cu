@@ -39,6 +39,7 @@ static struct option options[] = {
     { .name = "size", .has_arg = 1, .flag = NULL, .val = 's' },
     { .name = "sz", .has_arg = 1, .flag = NULL, .val = 's' },
     { .name = "global", .has_arg = 0, .flag = NULL, .val = 1 },
+    { .name = "io", .has_arg = 0, .flag = NULL, .val = 10 },
     { .name = "gpu", .has_arg = 1, .flag = NULL, .val = 'g' },
     { .name = "cuda-device", .has_arg = 1, .flag = NULL, .val = 'g' },
     { .name = "cuda-dev", .has_arg = 1, .flag = NULL, .val = 'g' },
@@ -171,6 +172,7 @@ static void give_usage(const char* progname)
             "\nOptional arguments (both client and server mode)\n"
             "  --size=<size>            memory size in KiB (or kB if --si is set), default is %u KiB\n"
             "  --global                 create local segment with SCI_FLAG_DMA_GLOBAL\n"
+            "  --io                     map remote segment with SCI_FLAG_IO_MAP_IOSPACE\n"
             "  --adapter=<adapter no>   local host adapter card number (defaults to 0)\n"
             "  --lseg=<segment id>      number identifying the local segment\n"
             "  --gpu=<gpu id>           specify a local GPU (if not given, buffer is allocated in RAM)\n"
@@ -202,6 +204,8 @@ int main(int argc, char** argv)
     bench_mode_t mode = BENCH_DMA_PUSH_TO_REMOTE;
 
     int global = 0;
+    int io = 0;
+    
 
     /* Parse program arguments */
     int opt, idx;
@@ -343,6 +347,10 @@ int main(int argc, char** argv)
 
             case 1:
                 global = 1;
+                break;
+
+            case 10:
+                io = 1;
                 break;
         }
     }
@@ -503,7 +511,7 @@ int main(int argc, char** argv)
             exit(1);
         }
 
-        if (client(local_adapter, &bench_conf, result) == 0)
+        if (client(local_adapter, &bench_conf, result, io ? SCI_FLAG_IO_MAP_IOSPACE : 0) == 0)
         {
             log_info("Total runtime is %.2f s", result->total_runtime / 1e6l);
             log_info("Avg bandwidth is %.2f %-5s", (double) (result->total_size * repeat_count) / (double) result->total_runtime, local_segment_factor == 1e3 ? "MB/s" : "MiB/s");

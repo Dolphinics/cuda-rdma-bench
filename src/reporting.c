@@ -17,10 +17,9 @@
 
 /* Verbosity level 
  *
- * 0 = errors only,
- * 1 = warnings and errors
- * 2 = warnings, errors and informatives
- * 3 = everything above + debug
+ * 0 = warnings and errors
+ * 1 = warnings, errors and informatives
+ * 2 = everything above + debug
  */
 unsigned verbosity = 0;
 
@@ -29,7 +28,7 @@ unsigned verbosity = 0;
 void log_info(const char* frmt, ...)
 {
     /* Oh yeah, I am so freaking awesome */
-    if (verbosity >= 2)
+    if (verbosity >= 1)
     {
         va_list args;
         char buff[BUFLEN];
@@ -50,21 +49,18 @@ void log_info(const char* frmt, ...)
 
 void log_warn(const char* frmt, ...)
 {
-    //if (verbosity >= 1)
-    {
-        va_list args;
-        char buff[BUFLEN];
-        size_t size;
+    va_list args;
+    char buff[BUFLEN];
+    size_t size;
 
-        va_start(args, frmt);
-        size = vsnprintf(buff, sizeof(buff), frmt, args);
-        va_end(args);
+    va_start(args, frmt);
+    size = vsnprintf(buff, sizeof(buff), frmt, args);
+    va_end(args);
 
-        fwrite("WARNING: ", 9, 1, stderr);
-        fwrite(buff, size, 1, stderr);
-        fwrite("\n", 1, 1, stderr);
-        fflush(stderr);
-    }
+    fwrite("WARNING: ", 9, 1, stderr);
+    fwrite(buff, size, 1, stderr);
+    fwrite("\n", 1, 1, stderr);
+    fflush(stderr);
 }
 
 
@@ -89,7 +85,7 @@ void log_error(const char* frmt, ...)
 
 void log_debug(const char* frmt, ...)
 {
-    if (verbosity >= 3)
+    if (verbosity >= 2)
     {
         va_list args;
         char buff[BUFLEN];

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sisci_api.h>
+#include <stdbool.h>
 #include "translist.h"
 #include "common.h"
 #include "util.h"
@@ -73,29 +74,46 @@ static size_t create_dma_vec(translist_t tl, dis_dma_vec_t* vec)
         total_size += entry.size;
     }
 
-    log_debug("Created DMA vector with %zu entries", veclen);
+    log_debug("Created vector with %zu entries", veclen);
     return total_size;
 }
 
 
-static void SCIMemWrite_wrapper(void* local_ptr, volatile void* remote_ptr, size_t len)
+static uint64_t SCIMemWrite_wrapper(volatile void* local_ptr, volatile void* remote_ptr, size_t len, int clear)
 {
     sci_error_t err;
 
-    SCIMemWrite(local_ptr, remote_ptr, len, 0, &err);
+    uint64_t start = ts_usecs();
+    SCIMemWrite((void*) local_ptr, remote_ptr, len, 0, &err);
+    uint64_t end = ts_usecs();
    
     if (err != SCI_ERR_OK)
     {
         log_error("SCIMemWrite failed");
+        return 0;
     }
+
+    if (clear)
+    {
+        volatile uint8_t* ptr = local_ptr;
+        for (size_t i = 0; i < len; ++i)
+        {
+            ptr[i] = ptr[i] + 1;
+        }
+    }
+
+    return end - start;
 }
 
 
-void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, result_t* result)
+void pio(translist_t tl, translist_desc_t* td, unsigned type, unsigned flags, size_t repeat, result_t* result)
 {
     sci_error_t err;
     sci_map_t remote_buf_map;
     volatile void* remote_buffer_ptr;
+
+    size_t veclen = translist_size(tl);
+    dis_dma_vec_t vec[veclen];
 
     if (td->global)
     {
@@ -103,40 +121,44 @@ void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, re
     }
 
     // Map remote segment
-    remote_buffer_ptr = SCIMapRemoteSegment(td->segment_remote, &remote_buf_map, 0, td->segment_size, NULL, 0, &err);
+    remote_buffer_ptr = SCIMapRemoteSegment(td->segment_remote, &remote_buf_map, 0, td->segment_size, NULL, flags, &err);
     if (err != SCI_ERR_OK)
     {
         log_error("Failed to map remote segment");
         return;
     }
 
-    size_t veclen = translist_size(tl);
-    dis_dma_vec_t vec[veclen];
+    if (td->local_gpu_info != NULL)
+    {
+        if (gpu_prepare_memcpy(td->local_gpu_info->id, flags, remote_buffer_ptr, td->segment_size) != 0)
+        {
+            log_error("Failed to prepare GPU transfer");
+            goto release;
+        }
+    }
 
     // Find out which memcpy function to use
-    void (*memcpy_func)(void*, volatile void*, size_t) = NULL;
+    uint64_t (*memcpy_func)(volatile void*, volatile void*, size_t, int) = NULL;
 
-    switch (flags)
+    switch (type)
     {
-        case 0:
+        case BENCH_WRITE_TO_REMOTE:
             memcpy_func = &ram_memcpy_local_to_remote;
             if (td->local_gpu_info != NULL)
             {
-                gpu_prepare_memcpy(td->local_gpu_info->id);
                 memcpy_func = &gpu_memcpy_local_to_remote;
             }
             break;
 
-        case 1:
+        case BENCH_READ_FROM_REMOTE:
             memcpy_func = &ram_memcpy_remote_to_local;
             if (td->local_gpu_info != NULL)
             {
-                gpu_prepare_memcpy(td->local_gpu_info->id);
                 memcpy_func = &gpu_memcpy_remote_to_local;
             }
             break;
 
-        case 2:
+        case BENCH_SCIMEMWRITE_TO_REMOTE:
         default:
             memcpy_func = &SCIMemWrite_wrapper;
             if (td->local_gpu_info != NULL)
@@ -151,25 +173,23 @@ void pio(translist_t tl, translist_desc_t* td, unsigned flags, size_t repeat, re
     result->total_size = create_dma_vec(tl, vec);
 
     // Do PIO transfer
-    uint8_t* local_ptr = (uint8_t*) td->buffer_ptr;
+    volatile uint8_t* local_ptr = (volatile uint8_t*) td->buffer_ptr;
     volatile uint8_t* remote_ptr = (volatile uint8_t*) remote_buffer_ptr;
 
-    uint64_t total_start = ts_usecs();
+
     for (size_t i = 0; i < repeat; ++i)
     {
-        uint64_t start = ts_usecs();
-        for (size_t i = 0; i < veclen; ++i)
+        uint64_t time = 0;
+        for (size_t j = 0; j < veclen; ++j)
         {
-            memcpy_func(local_ptr + vec[i].local_offset, remote_ptr + vec[i].remote_offset, vec[i].size);
+            // Timed transfer
+            time += memcpy_func(local_ptr + vec[j].local_offset, remote_ptr + vec[j].remote_offset, vec[j].size, false);
         }
-        uint64_t end = ts_usecs();
 
-        result->runtimes[i] = end - start;
+        result->runtimes[i] = time ? time : 1;
         result->success_count++;
+        result->total_runtime += time ? time : 1;
     }
-    uint64_t total_end = ts_usecs();
-
-    result->total_runtime = total_end - total_start;
 
 release:
     // Release remote segment
@@ -275,7 +295,7 @@ remove:
 }
 
 
-int client(unsigned adapter, const bench_t* benchmark, result_t* result)
+int client(unsigned adapter, const bench_t* benchmark, result_t* result, unsigned map_flags)
 {
     translist_desc_t tl_desc = translist_desc(benchmark->transfer_list);
 
@@ -304,37 +324,38 @@ int client(unsigned adapter, const bench_t* benchmark, result_t* result)
 
     // Do benchmark
     unsigned fetch_data = 0;
-    unsigned sci_flags = 0;
+    unsigned dma_flags = 0;
 
     log_info("Executing benchmark...");
     switch (benchmark->benchmark_mode)
     {
         case BENCH_DMA_PULL_FROM_REMOTE:
-            sci_flags |= SCI_FLAG_DMA_READ;
+            dma_flags |= SCI_FLAG_DMA_READ;
             fetch_data = 1;
             /* intentional fall-through */
         case BENCH_DMA_PUSH_TO_REMOTE:
-            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
+            dma(adapter, benchmark->transfer_list, &tl_desc, dma_flags, benchmark->num_runs, result);
             break;
 
         case BENCH_DMA_PULL_FROM_REMOTE_G:
-            sci_flags |= SCI_FLAG_DMA_READ;
+            dma_flags |= SCI_FLAG_DMA_READ;
             fetch_data = 1;
             /* intentional fall-through */
         case BENCH_DMA_PUSH_TO_REMOTE_G:
-            sci_flags |= SCI_FLAG_DMA_GLOBAL;
-            dma(adapter, benchmark->transfer_list, &tl_desc, sci_flags, benchmark->num_runs, result);
+            dma_flags |= SCI_FLAG_DMA_GLOBAL;
+            dma(adapter, benchmark->transfer_list, &tl_desc, dma_flags, benchmark->num_runs, result);
             break;
 
         case BENCH_READ_FROM_REMOTE:
-            fetch_data = 1;
-            /* intentional fall-through */
+            pio(benchmark->transfer_list, &tl_desc, BENCH_READ_FROM_REMOTE, map_flags, benchmark->num_runs, result);
+            break;
+
         case BENCH_WRITE_TO_REMOTE:
-            pio(benchmark->transfer_list, &tl_desc, fetch_data, benchmark->num_runs, result);
+            pio(benchmark->transfer_list, &tl_desc, BENCH_WRITE_TO_REMOTE, map_flags, benchmark->num_runs, result);
             break;
             
         case BENCH_SCIMEMWRITE_TO_REMOTE:
-            pio(benchmark->transfer_list, &tl_desc, 2, benchmark->num_runs, result);
+            pio(benchmark->transfer_list, &tl_desc, BENCH_SCIMEMWRITE_TO_REMOTE, map_flags, benchmark->num_runs, result);
             break;
 
         case BENCH_DO_NOTHING:

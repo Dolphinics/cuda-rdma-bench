@@ -36,9 +36,9 @@ int ram_memcmp(void* src_ptr, volatile void* dst_ptr, size_t len);
  * remote_ptr           - pointer to remote buffer
  * len                  - number of bytes to copy
  *
- * No return value
+ * Returns time elapsed.
  */
-void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size_t len);
+uint64_t ram_memcpy_remote_to_local(volatile void* local_ptr, volatile void* remote_ptr, size_t len, int clear);
 
 
 /* Copy memory from a local RAM memory buffer to a remote buffer
@@ -47,9 +47,9 @@ void ram_memcpy_remote_to_local(void* local_ptr, volatile void* remote_ptr, size
  * remote_ptr           - pointer to remote buffer
  * len                  - number of bytes to copy
  *
- * No return value
+ * Returns time elapsed.
  */
-void ram_memcpy_local_to_remote(void* local_ptr, volatile void* remote_ptr, size_t len);
+uint64_t ram_memcpy_local_to_remote(volatile void* local_ptr, volatile void* remote_ptr, size_t len, int clear);
 
 
 #ifdef __cplusplus

@@ -303,45 +303,172 @@ void gpu_memcpy_buffer_to_local(int gpu, void* gpu_buf, void* ram_buf, size_t le
 
 
 extern "C"
-void gpu_prepare_memcpy(int gpu)
+int gpu_prepare_memcpy(int gpu, unsigned flags, volatile void* remote_ptr, size_t remote_size)
 {
-    cudaError_t err = cudaSetDevice(gpu);
+    cudaError_t err;
 
+    if (!!(flags & SCI_FLAG_IO_MAP_IOSPACE))
+    {
+        log_debug("Trying to register remote memory with CUDA driver");
+        err = cudaHostRegister((void*) remote_ptr, remote_size, cudaHostRegisterIoMemory);
+        if (err != cudaSuccess)
+        {
+            log_warn("Failed to register remote memory with CUDA driver: %s", cudaGetErrorString(err));
+        }
+    }
+    
+    err = cudaSetDevice(gpu);
     if (err != cudaSuccess)
     {
         log_error("Failed to set GPU: %s", cudaGetErrorString(err));
+        return 1;
     }
 
     cudaDeviceSynchronize();
+    return 0;
 }
 
 
 
 extern "C"
-void gpu_memcpy_remote_to_local(void* local_buf, volatile void* remote_buf, size_t len)
+uint64_t gpu_memcpy_remote_to_local(volatile void* local_buf, volatile void* remote_buf, size_t len, int clear)
 {
-    cudaDeviceSynchronize();
+    cudaError_t err;
+    cudaEvent_t before;
+    cudaEvent_t after;
+    uint64_t elapsed = 0;
+    float ms = 0;
 
-    cudaError_t err = cudaMemcpy(local_buf, (void*) remote_buf, len, cudaMemcpyHostToDevice);
+    if (clear)
+    {
+        cudaDeviceSynchronize();
+    }
 
+    err = cudaEventCreateWithFlags(&before, cudaEventDefault);
     if (err != cudaSuccess)
     {
         log_error("%s", cudaGetErrorString(err));
+        goto leave;
     }
+
+    err = cudaEventCreateWithFlags(&after, cudaEventBlockingSync);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_before;
+    }
+    
+    err = cudaEventRecord(before);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    err = cudaMemcpy((void*) local_buf, (void*) remote_buf, len, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    err = cudaEventRecord(after);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    cudaEventSynchronize(after);
+
+    err = cudaEventElapsedTime(&ms, before, after);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    elapsed = (uint64_t) (ms * 1e3);
+
+destroy_after:
+    cudaEventDestroy(after);
+
+destroy_before:
+    cudaEventDestroy(before);
+
+leave:
+    return elapsed;
 }
 
 
 extern "C"
-void gpu_memcpy_local_to_remote(void* local_buf, volatile void* remote_buf, size_t len)
+uint64_t gpu_memcpy_local_to_remote(volatile void* local_buf, volatile void* remote_buf, size_t len, int clear)
 {
-    cudaDeviceSynchronize();
+    cudaError_t err;
+    cudaEvent_t before;
+    cudaEvent_t after;
+    uint64_t elapsed = 0;
+    float ms = 0;
 
-    cudaError_t err = cudaMemcpy((void*) remote_buf, local_buf, len, cudaMemcpyDeviceToHost);
+    if (clear)
+    {
+        cudaDeviceSynchronize();
+    }
 
+    err = cudaEventCreateWithFlags(&before, cudaEventDefault);
     if (err != cudaSuccess)
     {
         log_error("%s", cudaGetErrorString(err));
+        goto leave;
     }
+
+    err = cudaEventCreateWithFlags(&after, cudaEventBlockingSync);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_before;
+    }
+    
+    err = cudaEventRecord(before);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+    
+    err = cudaMemcpy((void*) remote_buf, (void*) local_buf, len, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    err = cudaEventRecord(after);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    cudaEventSynchronize(after);
+
+    err = cudaEventElapsedTime(&ms, before, after);
+    if (err != cudaSuccess)
+    {
+        log_error("%s", cudaGetErrorString(err));
+        goto destroy_after;
+    }
+
+    elapsed = (uint64_t) (ms * 1e3);
+
+destroy_after:
+    cudaEventDestroy(after);
+
+destroy_before:
+    cudaEventDestroy(before);
+
+leave:
+    return elapsed;
 }
 
 

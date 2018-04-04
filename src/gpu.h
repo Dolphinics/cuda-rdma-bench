@@ -86,15 +86,17 @@ void gpu_memcpy_buffer_to_local(int gpu, void* gpu_ptr, void* local_ptr, size_t 
 /* Prepare a copy between remote buffer and local GPU device buffer
  *
  * gpu                  - local GPU where the device buffer is allocated
+ * remote_ptr           - pointer to remote memory
+ * size                 - size of remote memory
  *
- * No return value
+ * Returns 0 if success
  */
-void gpu_prepare_memcpy(int gpu);
+int gpu_prepare_memcpy(int gpu, unsigned flags, volatile void* remote_ptr, size_t size);
 
 
-void gpu_memcpy_remote_to_local(void* gpu_ptr, volatile void* remote_ptr, size_t len);
+uint64_t gpu_memcpy_remote_to_local(volatile void* gpu_ptr, volatile void* remote_ptr, size_t len, int clear);
 
-void gpu_memcpy_local_to_remote(void* gpu_ptr, volatile void* remote_ptr, size_t len);
+uint64_t gpu_memcpy_local_to_remote(volatile void* gpu_ptr, volatile void* remote_ptr, size_t len, int clear);
 
 
 

@@ -77,7 +77,7 @@ void stop_server();
  *
  * Returns 0 on success, and non-zero on error
  */
-int client(unsigned adapter_no, const bench_t* benchmark, result_t* result);
+int client(unsigned adapter_no, const bench_t* benchmark, result_t* result, unsigned map_flags);
 
 #ifdef __cplusplus
 }
