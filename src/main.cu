@@ -108,7 +108,7 @@ static void list_gpu_devices(size_t size_factor)
         int rdma = !strncmp("Tesla", prop.name, 5) || !strncmp("Quadro", prop.name, 6);
 
         fprintf(stderr, "  %2d %-20s %02x:%02x.%-3x",
-                i, prop.name, prop.pciBusID, prop.pciDomainID, prop.pciDeviceID);
+                i, prop.name, prop.pciBusID, prop.pciDeviceID, 0);
         
         fprintf(stderr, " %8s", prop.canMapHostMemory ? "yes" : "no");
         fprintf(stderr, " %3s", prop.tccDriver ? "yes" : "no");
