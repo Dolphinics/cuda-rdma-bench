@@ -189,8 +189,8 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
     
     double megabytes_per_sec;
     
-    fprintf(fp, "%3s %-13s %-10s %-17s\n", 
-            "#", "segment size", "latency", "bandwidth");
+    fprintf(fp, "%3s %5s %-13s %-10s %-17s\n", 
+            "#", "vec", "segment size", "latency", "bandwidth");
 
     for (size_t i = 0; i < test->num_runs; ++i)
     {
@@ -207,8 +207,8 @@ void report_bandwidth(FILE* fp, const bench_t* test, const result_t* result, int
         {
             megabytes_per_sec = (double) size / (double) result->runtimes[i];
 
-            fprintf(fp, "%3lu %7.2f %-3s %7lu µs %11.3f %-5s\n", 
-                    i + 1, (double) size / (iec ? 1<<10 : 1e3), mb_unit, result->runtimes[i], megabytes_per_sec, bw_unit);
+            fprintf(fp, "%3lu %5zu %7.2f %-3s %7lu µs %11.3f %-5s\n", 
+                    i + 1, n, (double) size / (iec ? 1<<10 : 1e3), mb_unit, result->runtimes[i], megabytes_per_sec, bw_unit);
         }
         else
         {
